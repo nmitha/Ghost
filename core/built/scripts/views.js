@@ -316,7 +316,7 @@
         },
         afterRender: function () {
             this.$el.fadeIn(50);
-            $(".modal-background").fadeIn(10, function () {
+            $(".modal-background").show(10, function () {
                 $(this).addClass("in");
             });
             if (this.model.options.confirm) {
@@ -629,6 +629,7 @@
         },
 
         toggleFeatured: function (e) {
+            e.preventDefault();
             var self = this,
                 featured = !self.model.get('featured'),
                 featuredEl = $(e.currentTarget),
@@ -639,6 +640,7 @@
             }, {
                 success : function () {
                     featuredEl.removeClass("featured unfeatured").addClass(featured ? "featured" : "unfeatured");
+                    Ghost.notifications.clearEverything();
                     Ghost.notifications.addItem({
                         type: 'success',
                         message: "Post successfully marked as " + (featured ? "featured" : "not featured") + ".",
@@ -839,6 +841,261 @@
     });
 }());
 
+// The Save / Publish button
+
+/*global $, _, Ghost, shortcut */
+
+(function () {
+    'use strict';
+
+    // The Publish, Queue, Publish Now buttons
+    // ----------------------------------------
+    Ghost.View.EditorActionsWidget = Ghost.View.extend({
+
+        events: {
+            'click [data-set-status]': 'handleStatus',
+            'click .js-publish-button': 'handlePostButton'
+        },
+
+        statusMap: null,
+
+        createStatusMap: {
+            'draft': 'Save Draft',
+            'published': 'Publish Now'
+        },
+
+        updateStatusMap: {
+            'draft': 'Unpublish',
+            'published': 'Update Post'
+        },
+
+        //TODO: This has to be moved to the I18n localization file.
+        //This structure is supposed to be close to the i18n-localization which will be used soon.
+        messageMap: {
+            errors: {
+                post: {
+                    published: {
+                        'published': 'Your post could not be updated.',
+                        'draft': 'Your post could not be saved as a draft.'
+                    },
+                    draft: {
+                        'published': 'Your post could not be published.',
+                        'draft': 'Your post could not be saved as a draft.'
+                    }
+
+                }
+            },
+
+            success: {
+                post: {
+                    published: {
+                        'published': 'Your post has been updated.',
+                        'draft': 'Your post has been saved as a draft.'
+                    },
+                    draft: {
+                        'published': 'Your post has been published.',
+                        'draft': 'Your post has been saved as a draft.'
+                    }
+                }
+            }
+        },
+
+        initialize: function () {
+            var self = this;
+
+            // Toggle publish
+            shortcut.add('Ctrl+Alt+P', function () {
+                self.toggleStatus();
+            });
+            shortcut.add('Ctrl+S', function () {
+                self.updatePost();
+            });
+            shortcut.add('Meta+S', function () {
+                self.updatePost();
+            });
+            this.listenTo(this.model, 'change:status', this.render);
+        },
+
+        toggleStatus: function () {
+            var self = this,
+                keys = Object.keys(this.statusMap),
+                model = self.model,
+                prevStatus = model.get('status'),
+                currentIndex = keys.indexOf(prevStatus),
+                newIndex,
+                status;
+
+            newIndex = currentIndex + 1 > keys.length - 1 ? 0 : currentIndex + 1;
+            status = keys[newIndex];
+
+            this.setActiveStatus(keys[newIndex], this.statusMap[status], prevStatus);
+
+            this.savePost({
+                status: keys[newIndex]
+            }).then(function () {
+                    self.reportSaveSuccess(status, prevStatus);
+                }, function (xhr) {
+                    // Show a notification about the error
+                    self.reportSaveError(xhr, model, status, prevStatus);
+                });
+        },
+
+        setActiveStatus: function (newStatus, displayText, currentStatus) {
+            var isPublishing = (newStatus === 'published' && currentStatus !== 'published'),
+                isUnpublishing = (newStatus === 'draft' && currentStatus === 'published'),
+            // Controls when background of button has the splitbutton-delete/button-delete classes applied
+                isImportantStatus = (isPublishing || isUnpublishing);
+
+            $('.js-publish-splitbutton')
+                .removeClass(isImportantStatus ? 'splitbutton-save' : 'splitbutton-delete')
+                .addClass(isImportantStatus ? 'splitbutton-delete' : 'splitbutton-save');
+
+            // Set the publish button's action and proper coloring
+            $('.js-publish-button')
+                .attr('data-status', newStatus)
+                .text(displayText)
+                .removeClass(isImportantStatus ? 'button-save' : 'button-delete')
+                .addClass(isImportantStatus ? 'button-delete' : 'button-save');
+
+            // Remove the animated popup arrow
+            $('.js-publish-splitbutton > a')
+                .removeClass('active');
+
+            // Set the active action in the popup
+            $('.js-publish-splitbutton .editor-options li')
+                .removeClass('active')
+                .filter(['li[data-set-status="', newStatus, '"]'].join(''))
+                .addClass('active');
+        },
+
+        handleStatus: function (e) {
+            if (e) { e.preventDefault(); }
+            var status = $(e.currentTarget).attr('data-set-status'),
+                currentStatus = this.model.get('status');
+
+            this.setActiveStatus(status, this.statusMap[status], currentStatus);
+
+            // Dismiss the popup menu
+            $('body').find('.overlay:visible').fadeOut();
+        },
+
+        handlePostButton: function (e) {
+            if (e) { e.preventDefault(); }
+            var status = $(e.currentTarget).attr('data-status');
+
+            this.updatePost(status);
+        },
+
+        updatePost: function (status) {
+            var self = this,
+                model = this.model,
+                prevStatus = model.get('status');
+
+            // Default to same status if not passed in
+            status = status || prevStatus;
+
+            model.trigger('willSave');
+
+            this.savePost({
+                status: status
+            }).then(function () {
+                    self.reportSaveSuccess(status, prevStatus);
+                    // Refresh publish button and all relevant controls with updated status.
+                    self.render();
+                }, function (xhr) {
+                    // Set the model status back to previous
+                    model.set({ status: prevStatus });
+                    // Set appropriate button status
+                    self.setActiveStatus(status, self.statusMap[status], prevStatus);
+                    // Show a notification about the error
+                    self.reportSaveError(xhr, model, status, prevStatus);
+                });
+        },
+
+        savePost: function (data) {
+            var publishButton = $('.js-publish-button'),
+                saved,
+                enablePublish = function (deferred) {
+                    deferred.always(function () {
+                        publishButton.prop('disabled', false);
+                    });
+                    return deferred;
+                };
+
+            publishButton.prop('disabled', true);
+
+            _.each(this.model.blacklist, function (item) {
+                this.model.unset(item);
+            }, this);
+
+            saved = this.model.save(_.extend({
+                title: this.options.$title.val(),
+                markdown: this.options.editor.value()
+            }, data));
+
+            // TODO: Take this out if #2489 gets merged in Backbone. Or patch Backbone
+            // ourselves for more consistent promises.
+            if (saved) {
+                return enablePublish(saved);
+            }
+
+            return enablePublish($.Deferred().reject());
+        },
+
+        reportSaveSuccess: function (status, prevStatus) {
+            Ghost.notifications.clearEverything();
+            Ghost.notifications.addItem({
+                type: 'success',
+                message: this.messageMap.success.post[prevStatus][status],
+                status: 'passive'
+            });
+            this.options.editor.setDirty(false);
+        },
+
+        reportSaveError: function (response, model, status, prevStatus) {
+            var message = this.messageMap.errors.post[prevStatus][status];
+
+            if (response) {
+                // Get message from response
+                message += ' ' + Ghost.Views.Utils.getRequestErrorMessage(response);
+            } else if (model.validationError) {
+                // Grab a validation error
+                message += ' ' + model.validationError;
+            }
+
+            Ghost.notifications.clearEverything();
+            Ghost.notifications.addItem({
+                type: 'error',
+                message: message,
+                status: 'passive'
+            });
+        },
+
+        setStatusLabels: function (statusMap) {
+            _.each(statusMap, function (label, status) {
+                $('li[data-set-status="' + status + '"] > a').text(label);
+            });
+        },
+
+        render: function () {
+            var status = this.model.get('status');
+
+            // Assume that we're creating a new post
+            if (status !== 'published') {
+                this.statusMap = this.createStatusMap;
+            } else {
+                this.statusMap = this.updateStatusMap;
+            }
+
+            // Populate the publish menu with the appropriate verbiage
+            this.setStatusLabels(this.statusMap);
+
+            // Default the selected publish option to the current status of the post.
+            this.setActiveStatus(status, this.statusMap[status], status);
+        }
+
+    });
+}());
 // The Tag UI area associated with a post
 
 /*global window, document, setTimeout, $, _, Ghost */
@@ -886,7 +1143,7 @@
 
             if (tags) {
                 _.forEach(tags, function (tag) {
-                    var $tag = $('<span class="tag" data-tag-id="' + tag.id + '">' + tag.name + '</span>');
+                    var $tag = $('<span class="tag" data-tag-id="' + tag.id + '">' + _.escape(tag.name) + '</span>');
                     $tags.append($tag);
                     $("[data-tag-id=" + tag.id + "]")[0].scrollIntoView(true);
                 });
@@ -947,8 +1204,11 @@
                 styles = {
                     left: $target.position().left
                 },
-                maxSuggestions = 5, // Limit the suggestions number
-                regexTerm = searchTerm.replace(/(\s+)/g, "(<[^>]+>)*$1(<[^>]+>)*"),
+                // Limit the suggestions number
+                maxSuggestions = 5,
+                // Escape regex special characters
+                escapedTerm = searchTerm.replace(/[\-\/\\\^$*+?.()|\[\]{}]/g, '\\$&'),
+                regexTerm = escapedTerm.replace(/(\s+)/g, "(<[^>]+>)*$1(<[^>]+>)*"),
                 regexPattern = new RegExp("(" + regexTerm + ")", "i");
 
             this.$suggestions.css(styles);
@@ -962,10 +1222,14 @@
                 var highlightedName,
                     suggestionHTML;
 
-                highlightedName = matchingTag.name.replace(regexPattern, "<mark>$1</mark>");
+                highlightedName = matchingTag.name.replace(regexPattern, function (match, p1) {
+                    return "<mark>" + _.escape(p1) + "</mark>";
+                });
                 /*jslint regexp: true */ // - would like to remove this
-                highlightedName = highlightedName.replace(/(<mark>[^<>]*)((<[^>]+>)+)([^<>]*<\/mark>)/, "$1</mark>$2<mark>$4");
-
+                highlightedName = highlightedName.replace(/(<mark>[^<>]*)((<[^>]+>)+)([^<>]*<\/mark>)/, function (match, p1, p2, p3, p4) {
+                    return _.escape(p1) + '</mark>' + _.escape(p2) + '<mark>' + _.escape(p4);
+                });
+                
                 suggestionHTML = "<li data-tag-id='" + matchingTag.id + "' data-tag-name='" + _.escape(matchingTag.name) + "'><a href='#'>" + highlightedName + "</a></li>";
                 this.$suggestions.append(suggestionHTML);
             }, this);
@@ -1026,7 +1290,8 @@
                 searchTerm = $.trim($target.val()),
                 tag,
                 $selectedSuggestion,
-                isComma = ",".localeCompare(String.fromCharCode(e.keyCode || e.charCode)) === 0;
+                isComma = ",".localeCompare(String.fromCharCode(e.keyCode || e.charCode)) === 0,
+                hasAlreadyBeenAdded;
 
             // use localeCompare in case of international keyboard layout
             if ((e.keyCode === this.keys.ENTER || isComma) && searchTerm) {
@@ -1035,16 +1300,19 @@
 
                 $selectedSuggestion = this.$suggestions.children(".selected");
                 if (this.$suggestions.is(":visible") && $selectedSuggestion.length !== 0) {
-
-                    if ($('.tag:containsExact("' + _.unescape($selectedSuggestion.data('tag-name')) + '")').length === 0) {
-                        tag = {id: $selectedSuggestion.data('tag-id'), name: _.unescape($selectedSuggestion.data('tag-name'))};
+                    tag = {id: $selectedSuggestion.data('tag-id'), name: _.unescape($selectedSuggestion.data('tag-name'))};
+                    hasAlreadyBeenAdded = this.hasTagBeenAdded(tag.name);
+                    if (!hasAlreadyBeenAdded) {
                         this.addTag(tag);
                     }
                 } else {
                     if (isComma) {
+                        // Remove comma from string if comma is used to submit.
                         searchTerm = searchTerm.replace(/,/g, "");
-                    }  // Remove comma from string if comma is used to submit.
-                    if ($('.tag:containsExact("' + searchTerm + '")').length === 0) {
+                    }
+
+                    hasAlreadyBeenAdded = this.hasTagBeenAdded(searchTerm);
+                    if (!hasAlreadyBeenAdded) {
                         this.addTag({id: null, name: searchTerm});
                     }
                 }
@@ -1057,13 +1325,9 @@
         completeCurrentTag: function () {
             var $target = this.$('.tag-input'),
                 tagName = $target.val(),
-                usedTagNames,
                 hasAlreadyBeenAdded;
 
-            usedTagNames = _.map(this.model.get('tags'), function (tag) {
-                return tag.name.toUpperCase();
-            });
-            hasAlreadyBeenAdded = usedTagNames.indexOf(tagName.toUpperCase()) !== -1;
+            hasAlreadyBeenAdded = this.hasTagBeenAdded(tagName);
 
             if (tagName.length > 0 && !hasAlreadyBeenAdded) {
                 this.addTag({id: null, name: tagName});
@@ -1108,9 +1372,8 @@
 
                 tagNameMatches = tag.name.toUpperCase().indexOf(searchTerm) !== -1;
 
-                hasAlreadyBeenAdded = _.some(self.model.get('tags'), function (usedTag) {
-                    return tag.name.toUpperCase() === usedTag.name.toUpperCase();
-                });
+                hasAlreadyBeenAdded = self.hasTagBeenAdded(tag.name);
+
                 return tagNameMatches && !hasAlreadyBeenAdded;
             });
 
@@ -1118,7 +1381,7 @@
         },
 
         addTag: function (tag) {
-            var $tag = $('<span class="tag" data-tag-id="' + tag.id + '">' + tag.name + '</span>');
+            var $tag = $('<span class="tag" data-tag-id="' + tag.id + '">' + _.escape(tag.name) + '</span>');
             this.$('.tags').append($tag);
             $(".tag").last()[0].scrollIntoView(true);
             window.scrollTo(0, 1);
@@ -1126,6 +1389,12 @@
 
             this.$('.tag-input').val('').focus();
             this.$suggestions.hide();
+        },
+
+        hasTagBeenAdded: function (tagName) {
+            return _.some(this.model.get('tags'), function (usedTag) {
+                return tagName.toUpperCase() === usedTag.name.toUpperCase();
+            });
         }
     });
 
@@ -1133,46 +1402,11 @@
 
 // # Article Editor
 
-/*global window, document, setTimeout, navigator, $, _, Backbone, Ghost, Showdown, CodeMirror, shortcut, Countable */
+/*global document, setTimeout, navigator, $, Backbone, Ghost, shortcut */
 (function () {
-    "use strict";
+    'use strict';
 
-    /*jslint regexp: true, bitwise: true */
-    var PublishBar,
-        ActionsWidget,
-        UploadManager,
-        MarkerManager,
-        MarkdownShortcuts = [
-            {'key': 'Ctrl+B', 'style': 'bold'},
-            {'key': 'Meta+B', 'style': 'bold'},
-            {'key': 'Ctrl+I', 'style': 'italic'},
-            {'key': 'Meta+I', 'style': 'italic'},
-            {'key': 'Ctrl+Alt+U', 'style': 'strike'},
-            {'key': 'Ctrl+Shift+K', 'style': 'code'},
-            {'key': 'Meta+K', 'style': 'code'},
-            {'key': 'Ctrl+Alt+1', 'style': 'h1'},
-            {'key': 'Ctrl+Alt+2', 'style': 'h2'},
-            {'key': 'Ctrl+Alt+3', 'style': 'h3'},
-            {'key': 'Ctrl+Alt+4', 'style': 'h4'},
-            {'key': 'Ctrl+Alt+5', 'style': 'h5'},
-            {'key': 'Ctrl+Alt+6', 'style': 'h6'},
-            {'key': 'Ctrl+Shift+L', 'style': 'link'},
-            {'key': 'Ctrl+Shift+I', 'style': 'image'},
-            {'key': 'Ctrl+Q', 'style': 'blockquote'},
-            {'key': 'Ctrl+Shift+1', 'style': 'currentDate'},
-            {'key': 'Ctrl+U', 'style': 'uppercase'},
-            {'key': 'Ctrl+Shift+U', 'style': 'lowercase'},
-            {'key': 'Ctrl+Alt+Shift+U', 'style': 'titlecase'},
-            {'key': 'Ctrl+Alt+W', 'style': 'selectword'},
-            {'key': 'Ctrl+L', 'style': 'list'},
-            {'key': 'Ctrl+Alt+C', 'style': 'copyHTML'},
-            {'key': 'Meta+Alt+C', 'style': 'copyHTML'},
-            {'key': 'Meta+Enter', 'style': 'newLine'},
-            {'key': 'Ctrl+Enter', 'style': 'newLine'}
-        ],
-        imageMarkdownRegex = /^(?:\{<(.*?)>\})?!(?:\[([^\n\]]*)\])(?:\(([^\n\]]*)\))?$/gim,
-        markerRegex = /\{<([\w\W]*?)>\}/;
-    /*jslint regexp: false, bitwise: false */
+    var PublishBar;
 
     // The publish bar associated with a post, which has the TagWidget and
     // Save button and options and such.
@@ -1180,318 +1414,34 @@
     PublishBar = Ghost.View.extend({
 
         initialize: function () {
-            this.addSubview(new Ghost.View.EditorTagWidget({el: this.$('#entry-tags'), model: this.model})).render();
-            this.addSubview(new ActionsWidget({el: this.$('#entry-actions'), model: this.model})).render();
-            this.addSubview(new Ghost.View.PostSettings({el: $('#entry-controls'), model: this.model})).render();
+
+            this.addSubview(new Ghost.View.EditorTagWidget(
+                {el: this.$('#entry-tags'), model: this.model}
+            )).render();
+            this.addSubview(new Ghost.View.PostSettings(
+                {el: $('#entry-controls'), model: this.model}
+            )).render();
+
+            // Pass the Actions widget references to the title and editor so that it can get
+            // the values that need to be saved
+            this.addSubview(new Ghost.View.EditorActionsWidget(
+                {
+                    el: this.$('#entry-actions'),
+                    model: this.model,
+                    $title: this.options.$title,
+                    editor: this.options.editor
+                }
+            )).render();
+
         },
 
         render: function () { return this; }
-
     });
 
-    // The Publish, Queue, Publish Now buttons
-    // ----------------------------------------
-    ActionsWidget = Ghost.View.extend({
-
-        events: {
-            'click [data-set-status]': 'handleStatus',
-            'click .js-publish-button': 'handlePostButton'
-        },
-
-        statusMap: null,
-
-        createStatusMap: {
-            'draft': 'Save Draft',
-            'published': 'Publish Now'
-        },
-
-        updateStatusMap: {
-            'draft': 'Unpublish',
-            'published': 'Update Post'
-        },
-
-        //TODO: This has to be moved to the I18n localization file.
-        //This structure is supposed to be close to the i18n-localization which will be used soon.
-        messageMap: {
-            errors: {
-                post: {
-                    published: {
-                        'published': 'Your post could not be updated.',
-                        'draft': 'Your post could not be saved as a draft.'
-                    },
-                    draft: {
-                        'published': 'Your post could not be published.',
-                        'draft': 'Your post could not be saved as a draft.'
-                    }
-
-                }
-            },
-
-            success: {
-                post: {
-                    published: {
-                        'published': 'Your post has been updated.',
-                        'draft': 'Your post has been saved as a draft.'
-                    },
-                    draft: {
-                        'published': 'Your post has been published.',
-                        'draft': 'Your post has been saved as a draft.'
-                    }
-                }
-            }
-        },
-
-        initialize: function () {
-            var self = this;
-            // Toggle publish
-            shortcut.add("Ctrl+Alt+P", function () {
-                self.toggleStatus();
-            });
-            shortcut.add("Ctrl+S", function () {
-                self.updatePost();
-            });
-            shortcut.add("Meta+S", function () {
-                self.updatePost();
-            });
-            this.listenTo(this.model, 'change:status', this.render);
-        },
-
-        toggleStatus: function () {
-            var self = this,
-                keys = Object.keys(this.statusMap),
-                model = self.model,
-                prevStatus = model.get('status'),
-                currentIndex = keys.indexOf(prevStatus),
-                newIndex,
-                status;
-
-            newIndex = currentIndex + 1 > keys.length - 1 ? 0 : currentIndex + 1;
-            status = keys[newIndex];
-
-            this.setActiveStatus(keys[newIndex], this.statusMap[status], prevStatus);
-
-            this.savePost({
-                status: keys[newIndex]
-            }).then(function () {
-                self.reportSaveSuccess(status, prevStatus);
-            }, function (xhr) {
-                // Show a notification about the error
-                self.reportSaveError(xhr, model, status, prevStatus);
-            });
-        },
-
-        setActiveStatus: function (newStatus, displayText, currentStatus) {
-            var isPublishing = (newStatus === 'published' && currentStatus !== 'published'),
-                isUnpublishing = (newStatus === 'draft' && currentStatus === 'published'),
-                // Controls when background of button has the splitbutton-delete/button-delete classes applied
-                isImportantStatus = (isPublishing || isUnpublishing);
-
-            $('.js-publish-splitbutton')
-                .removeClass(isImportantStatus ? 'splitbutton-save' : 'splitbutton-delete')
-                .addClass(isImportantStatus ? 'splitbutton-delete' : 'splitbutton-save');
-
-            // Set the publish button's action and proper coloring
-            $('.js-publish-button')
-                .attr('data-status', newStatus)
-                .text(displayText)
-                .removeClass(isImportantStatus ? 'button-save' : 'button-delete')
-                .addClass(isImportantStatus ? 'button-delete' : 'button-save');
-
-            // Remove the animated popup arrow
-            $('.js-publish-splitbutton > a')
-                .removeClass('active');
-
-            // Set the active action in the popup
-            $('.js-publish-splitbutton .editor-options li')
-                .removeClass('active')
-                .filter(['li[data-set-status="', newStatus, '"]'].join(''))
-                    .addClass('active');
-        },
-
-        handleStatus: function (e) {
-            if (e) { e.preventDefault(); }
-            var status = $(e.currentTarget).attr('data-set-status'),
-                currentStatus = this.model.get('status');
-
-            this.setActiveStatus(status, this.statusMap[status], currentStatus);
-
-            // Dismiss the popup menu
-            $('body').find('.overlay:visible').fadeOut();
-        },
-
-        handlePostButton: function (e) {
-            if (e) { e.preventDefault(); }
-            var status = $(e.currentTarget).attr('data-status');
-
-            this.updatePost(status);
-        },
-
-        updatePost: function (status) {
-            var self = this,
-                model = this.model,
-                prevStatus = model.get('status');
-
-            // Default to same status if not passed in
-            status = status || prevStatus;
-
-            model.trigger('willSave');
-
-            this.savePost({
-                status: status
-            }).then(function () {
-                self.reportSaveSuccess(status, prevStatus);
-                // Refresh publish button and all relevant controls with updated status.
-                self.render();
-            }, function (xhr) {
-                // Set the model status back to previous
-                model.set({ status: prevStatus });
-                // Set appropriate button status
-                self.setActiveStatus(status, self.statusMap[status], prevStatus);
-                // Show a notification about the error
-                self.reportSaveError(xhr, model, status, prevStatus);
-            });
-        },
-
-        savePost: function (data) {
-            var publishButton = $('.js-publish-button'),
-                saved,
-                enablePublish = function (deferred) {
-                    deferred.always(function () {
-                        publishButton.prop('disabled', false);
-                    });
-                    return deferred;
-                };
-
-            publishButton.prop('disabled', true);
-
-            _.each(this.model.blacklist, function (item) {
-                this.model.unset(item);
-            }, this);
-
-            saved = this.model.save(_.extend({
-                title: $('#entry-title').val(),
-                markdown: Ghost.currentView.getEditorValue()
-            }, data));
-
-            // TODO: Take this out if #2489 gets merged in Backbone. Or patch Backbone
-            // ourselves for more consistent promises.
-            if (saved) {
-                return enablePublish(saved);
-            }
-
-            return enablePublish($.Deferred().reject());
-        },
-
-        reportSaveSuccess: function (status, prevStatus) {
-            Ghost.notifications.clearEverything();
-            Ghost.notifications.addItem({
-                type: 'success',
-                message: this.messageMap.success.post[prevStatus][status],
-                status: 'passive'
-            });
-            Ghost.currentView.setEditorDirty(false);
-        },
-
-        reportSaveError: function (response, model, status, prevStatus) {
-            var message = this.messageMap.errors.post[prevStatus][status];
-
-            if (response) {
-                // Get message from response
-                message += " " + Ghost.Views.Utils.getRequestErrorMessage(response);
-            } else if (model.validationError) {
-                // Grab a validation error
-                message += " " + model.validationError;
-            }
-
-            Ghost.notifications.clearEverything();
-            Ghost.notifications.addItem({
-                type: 'error',
-                message: message,
-                status: 'passive'
-            });
-        },
-
-        setStatusLabels: function (statusMap) {
-            _.each(statusMap, function (label, status) {
-                $('li[data-set-status="' + status + '"] > a').text(label);
-            });
-        },
-
-        render: function () {
-            var status = this.model.get('status');
-
-            // Assume that we're creating a new post
-            if (status !== 'published') {
-                this.statusMap = this.createStatusMap;
-            } else {
-                this.statusMap = this.updateStatusMap;
-            }
-
-            // Populate the publish menu with the appropriate verbiage
-            this.setStatusLabels(this.statusMap);
-
-            // Default the selected publish option to the current status of the post.
-            this.setActiveStatus(status, this.statusMap[status], status);
-        }
-
-    });
 
     // The entire /editor page's route
     // ----------------------------------------
     Ghost.Views.Editor = Ghost.View.extend({
-
-        initialize: function () {
-            var self = this;
-
-            // Add the container view for the Publish Bar
-            this.addSubview(new PublishBar({el: "#publish-bar", model: this.model})).render();
-
-            this.$('#entry-title').val(this.model.get('title')).focus();
-            this.$('#entry-markdown').text(this.model.get('markdown'));
-
-            this.listenTo(this.model, 'change:title', this.renderTitle);
-            this.listenTo(this.model, 'change:id', function (m) {
-                // This is a special case for browsers which fire an unload event when using navigate. The id change
-                // happens before the save success and can cause the unload alert to appear incorrectly on first save
-                // The id only changes in the event that the save has been successful, so this workaround is safes
-                self.setEditorDirty(false);
-                Backbone.history.navigate('/editor/' + m.id + '/');
-            });
-
-            this.initMarkdown();
-            this.renderPreview();
-
-            $('.entry-content header, .entry-preview header').on('click', function () {
-                $('.entry-content, .entry-preview').removeClass('active');
-                $(this).closest('section').addClass('active');
-            });
-
-            $('.entry-title .icon-fullscreen').on('click', function (e) {
-                e.preventDefault();
-                $('body').toggleClass('fullscreen');
-            });
-
-            this.$('.CodeMirror-scroll').on('scroll', this.syncScroll);
-
-            this.$('.CodeMirror-scroll').scrollClass({target: '.entry-markdown', offset: 10});
-            this.$('.entry-preview-content').scrollClass({target: '.entry-preview', offset: 10});
-
-
-            // Zen writing mode shortcut
-            shortcut.add("Alt+Shift+Z", function () {
-                $('body').toggleClass('zen');
-            });
-
-            $('.entry-markdown header, .entry-preview header').click(function (e) {
-                $('.entry-markdown, .entry-preview').removeClass('active');
-                $(e.target).closest('section').addClass('active');
-            });
-
-            // Deactivate default drag/drop action
-            $(document).bind('drop dragover', function (e) {
-                e.preventDefault();
-            });
-        },
 
         events: {
             'click .markdown-help': 'showHelp',
@@ -1499,46 +1449,53 @@
             'orientationchange': 'orientationChange'
         },
 
-        syncScroll: _.throttle(function (e) {
-            var $codeViewport = $(e.target),
-                $previewViewport = $('.entry-preview-content'),
-                $codeContent = $('.CodeMirror-sizer'),
-                $previewContent = $('.rendered-markdown'),
+        initialize: function () {
+            this.$title = this.$('#entry-title');
+            this.$editor = this.$('#entry-markdown');
 
-                // calc position
-                codeHeight = $codeContent.height() - $codeViewport.height(),
-                previewHeight = $previewContent.height() - $previewViewport.height(),
-                ratio = previewHeight / codeHeight,
-                previewPostition = $codeViewport.scrollTop() * ratio;
+            this.$title.val(this.model.get('title')).focus();
+            this.$editor.text(this.model.get('markdown'));
 
-            // apply new scroll
-            $previewViewport.scrollTop(previewPostition);
-        }, 10),
+            // Create a new editor
+            this.editor = new Ghost.Editor.Main();
 
-        showHelp: function () {
-            this.addSubview(new Ghost.Views.Modal({
-                model: {
-                    options: {
-                        close: true,
-                        type: "info",
-                        style: ["wide"],
-                        animation: 'fade'
-                    },
-                    content: {
-                        template: 'markdown',
-                        title: 'Markdown Help'
-                    }
-                }
-            }));
+            // Add the container view for the Publish Bar
+            // Passing reference to the title and editor
+            this.addSubview(new PublishBar(
+                {el: '#publish-bar', model: this.model, $title: this.$title, editor: this.editor}
+            )).render();
+
+            this.listenTo(this.model, 'change:title', this.renderTitle);
+            this.listenTo(this.model, 'change:id', this.handleIdChange);
+
+            this.bindShortcuts();
+
+            $('.entry-markdown header, .entry-preview header').on('click', function (e) {
+                $('.entry-markdown, .entry-preview').removeClass('active');
+                $(e.currentTarget).closest('section').addClass('active');
+            });
+        },
+
+        bindShortcuts: function () {
+            var self = this;
+
+             // Zen writing mode shortcut - full editor view
+            shortcut.add('Alt+Shift+Z', function () {
+                $('body').toggleClass('zen');
+            });
+
+            // HTML copy & paste
+            shortcut.add('Ctrl+Alt+C', function () {
+                self.showHTML();
+            });
         },
 
         trimTitle: function () {
-            var $title = $('#entry-title'),
-                rawTitle = $title.val(),
+            var rawTitle = this.$title.val(),
                 trimmedTitle = $.trim(rawTitle);
 
             if (rawTitle !== trimmedTitle) {
-                $title.val(trimmedTitle);
+                this.$title.val(trimmedTitle);
             }
 
             // Trigger title change for post-settings.js
@@ -1546,7 +1503,15 @@
         },
 
         renderTitle: function () {
-            this.$('#entry-title').val(this.model.get('title'));
+            this.$title.val(this.model.get('title'));
+        },
+
+        handleIdChange: function (m) {
+            // This is a special case for browsers which fire an unload event when using navigate. The id change
+            // happens before the save success and can cause the unload alert to appear incorrectly on first save
+            // The id only changes in the event that the save has been successful, so this workaround is safes
+            this.editor.setDirty(false);
+            Backbone.history.navigate('/editor/' + m.id + '/');
         },
 
         // This is a hack to remove iOS6 white space on orientation change bug
@@ -1561,312 +1526,38 @@
             }
         },
 
-        // This updates the editor preview panel.
-        // Currently gets called on every key press.
-        // Also trigger word count update
-        renderPreview: function () {
-            var self = this,
-                preview = document.getElementsByClassName('rendered-markdown')[0];
-            preview.innerHTML = this.converter.makeHtml(this.editor.getValue());
-
-            this.initUploads();
-
-            Countable.once(preview, function (counter) {
-                self.$('.entry-word-count').text($.pluralize(counter.words, 'word'));
-                self.$('.entry-character-count').text($.pluralize(counter.characters, 'character'));
-                self.$('.entry-paragraph-count').text($.pluralize(counter.paragraphs, 'paragraph'));
-            });
-        },
-
-        // Markdown converter & markdown shortcut initialization.
-        initMarkdown: function () {
-            var self = this;
-
-            this.converter = new Showdown.converter({extensions: ['typography', 'ghostdown', 'github']});
-            this.editor = CodeMirror.fromTextArea(document.getElementById('entry-markdown'), {
-                mode: 'gfm',
-                tabMode: 'indent',
-                tabindex: "2",
-                lineWrapping: true,
-                dragDrop: false,
-                extraKeys: {
-                    Home: "goLineLeft",
-                    End: "goLineRight"
-                }
-            });
-            this.uploadMgr = new UploadManager(this.editor);
-
-            // Inject modal for HTML to be viewed in
-            shortcut.add("Ctrl+Alt+C", function () {
-                self.showHTML();
-            });
-            shortcut.add("Ctrl+Alt+C", function () {
-                self.showHTML();
-            });
-
-            _.each(MarkdownShortcuts, function (combo) {
-                shortcut.add(combo.key, function () {
-                    return self.editor.addMarkdown({style: combo.style});
-                });
-            });
-
-            this.enableEditor();
-        },
-
-        options: {
-            markers: {}
-        },
-
-        getEditorValue: function () {
-            return this.uploadMgr.getEditorValue();
-        },
-
-        unloadDirtyMessage: function () {
-            return "==============================\n\n" +
-                "Hey there! It looks like you're in the middle of writing" +
-                " something and you haven't saved all of your content." +
-                "\n\nSave before you go!\n\n" +
-                "==============================";
-        },
-
-        setEditorDirty: function (dirty) {
-            window.onbeforeunload = dirty ? this.unloadDirtyMessage : null;
-        },
-
-        initUploads: function () {
-            var filestorage = $('#entry-markdown-content').data('filestorage');
-            this.$('.js-drop-zone').upload({editor: true, fileStorage: filestorage});
-            this.$('.js-drop-zone').on('uploadstart', $.proxy(this.disableEditor, this));
-            this.$('.js-drop-zone').on('uploadfailure', $.proxy(this.enableEditor, this));
-            this.$('.js-drop-zone').on('uploadsuccess', $.proxy(this.enableEditor, this));
-            this.$('.js-drop-zone').on('uploadsuccess', this.uploadMgr.handleUpload);
-        },
-
-        enableEditor: function () {
-            var self = this;
-            this.editor.setOption("readOnly", false);
-            this.editor.on('change', function () {
-                self.setEditorDirty(true);
-                self.renderPreview();
-            });
-        },
-
-        disableEditor: function () {
-            var self = this;
-            this.editor.setOption("readOnly", "nocursor");
-            this.editor.off('change', function () {
-                self.renderPreview();
-            });
-        },
-
-        showHTML: function () {
+        showEditorModal: function (content) {
             this.addSubview(new Ghost.Views.Modal({
                 model: {
                     options: {
                         close: true,
-                        type: "info",
-                        style: ["wide"],
+                        style: ['wide'],
                         animation: 'fade'
                     },
-                    content: {
-                        template: 'copyToHTML',
-                        title: 'Copied HTML'
-                    }
+                    content: content
                 }
             }));
         },
 
+        showHelp: function () {
+            var content = {
+                template: 'markdown',
+                title: 'Markdown Help'
+            };
+            this.showEditorModal(content);
+        },
+
+        showHTML: function () {
+            var content = {
+                template: 'copyToHTML',
+                title: 'Copied HTML'
+            };
+            this.showEditorModal(content);
+        },
+
         render: function () { return this; }
     });
-
-    MarkerManager = function (editor) {
-        var markers = {},
-            uploadPrefix = 'image_upload',
-            uploadId = 1;
-
-        function addMarker(line, ln) {
-            var marker,
-                magicId = '{<' + uploadId + '>}';
-            editor.setLine(ln, magicId + line.text);
-            marker = editor.markText(
-                {line: ln, ch: 0},
-                {line: ln, ch: (magicId.length)},
-                {collapsed: true}
-            );
-
-            markers[uploadPrefix + '_' + uploadId] = marker;
-            uploadId += 1;
-        }
-
-        function getMarkerRegexForId(id) {
-            id = id.replace('image_upload_', '');
-            return new RegExp('\\{<' + id + '>\\}', 'gmi');
-        }
-
-        function stripMarkerFromLine(line) {
-            var markerText = line.text.match(markerRegex),
-                ln = editor.getLineNumber(line);
-
-            if (markerText) {
-                editor.replaceRange('', {line: ln, ch: markerText.index}, {line: ln, ch: markerText.index + markerText[0].length});
-            }
-        }
-
-        function findAndStripMarker(id) {
-            editor.eachLine(function (line) {
-                var markerText = getMarkerRegexForId(id).exec(line.text),
-                    ln;
-
-                if (markerText) {
-                    ln = editor.getLineNumber(line);
-                    editor.replaceRange('', {line: ln, ch: markerText.index}, {line: ln, ch: markerText.index + markerText[0].length});
-                }
-            });
-        }
-
-        function removeMarker(id, marker, line) {
-            delete markers[id];
-            marker.clear();
-
-            if (line) {
-                stripMarkerFromLine(line);
-            } else {
-                findAndStripMarker(id);
-            }
-        }
-
-        function checkMarkers() {
-            _.each(markers, function (marker, id) {
-                var line;
-                marker = markers[id];
-                if (marker.find()) {
-                    line = editor.getLineHandle(marker.find().from.line);
-                    if (!line.text.match(imageMarkdownRegex)) {
-                        removeMarker(id, marker, line);
-                    }
-                } else {
-                    removeMarker(id, marker);
-                }
-            });
-        }
-
-        function initMarkers(line) {
-            var isImage = line.text.match(imageMarkdownRegex),
-                hasMarker = line.text.match(markerRegex);
-
-            if (isImage && !hasMarker) {
-                addMarker(line, editor.getLineNumber(line));
-            }
-        }
-
-        // public api
-        _.extend(this, {
-            markers: markers,
-            checkMarkers: checkMarkers,
-            addMarker: addMarker,
-            stripMarkerFromLine: stripMarkerFromLine,
-            getMarkerRegexForId: getMarkerRegexForId
-        });
-
-        // Initialise
-        editor.eachLine(initMarkers);
-    };
-
-    UploadManager = function (editor) {
-        var markerMgr = new MarkerManager(editor);
-
-        function findLine(result_id) {
-            // try to find the right line to replace
-            if (markerMgr.markers.hasOwnProperty(result_id) && markerMgr.markers[result_id].find()) {
-                return editor.getLineHandle(markerMgr.markers[result_id].find().from.line);
-            }
-
-            return false;
-        }
-
-        function checkLine(ln, mode) {
-            var line = editor.getLineHandle(ln),
-                isImage = line.text.match(imageMarkdownRegex),
-                hasMarker;
-
-            // We care if it is an image
-            if (isImage) {
-                hasMarker = line.text.match(markerRegex);
-
-                if (hasMarker && mode === 'paste') {
-                    // this could be a duplicate, and won't be a real marker
-                    markerMgr.stripMarkerFromLine(line);
-                }
-
-                if (!hasMarker) {
-                    markerMgr.addMarker(line, ln);
-                }
-            }
-            // TODO: hasMarker but no image?
-        }
-
-        function handleUpload(e, result_src) {
-            /*jslint regexp: true, bitwise: true */
-            var line = findLine($(e.currentTarget).attr('id')),
-                lineNumber = editor.getLineNumber(line),
-                match = line.text.match(/\([^\n]*\)?/),
-                replacement = '(http://)';
-            /*jslint regexp: false, bitwise: false */
-
-            if (match) {
-                // simple case, we have the parenthesis
-                editor.setSelection({line: lineNumber, ch: match.index + 1}, {line: lineNumber, ch: match.index + match[0].length - 1});
-            } else {
-                match = line.text.match(/\]/);
-                if (match) {
-                    editor.replaceRange(
-                        replacement,
-                        {line: lineNumber, ch: match.index + 1},
-                        {line: lineNumber, ch: match.index + 1}
-                    );
-                    editor.setSelection(
-                        {line: lineNumber, ch: match.index + 2},
-                        {line: lineNumber, ch: match.index + replacement.length }
-                    );
-                }
-            }
-            editor.replaceSelection(result_src);
-        }
-
-        function getEditorValue() {
-            var value = editor.getValue();
-
-            _.each(markerMgr.markers, function (marker, id) {
-                /*jshint unused:false*/
-                value = value.replace(markerMgr.getMarkerRegexForId(id), '');
-            });
-
-            return value;
-        }
-
-
-        // Public API
-        _.extend(this, {
-            getEditorValue: getEditorValue,
-            handleUpload: handleUpload
-        });
-
-        // initialise
-        editor.on('change', function (cm, changeObj) {
-            /*jshint unused:false*/
-            var linesChanged = _.range(changeObj.from.line, changeObj.from.line + changeObj.text.length);
-
-            _.each(linesChanged, function (ln) {
-                checkLine(ln, changeObj.origin);
-            });
-
-            // Is this a line which may have had a marker on it?
-            markerMgr.checkMarkers();
-        });
-    };
-
 }());
-
 /*global window, Ghost, $, validator */
 (function () {
     "use strict";
@@ -1963,7 +1654,8 @@
             var name = this.$('.name').val(),
                 email = this.$('.email').val(),
                 password = this.$('.password').val(),
-                validationErrors = [];
+                validationErrors = [],
+                self = this;
 
             if (!validator.isLength(name, 1)) {
                 validationErrors.push("Please enter a name.");
@@ -2000,7 +1692,7 @@
                         window.location.href = msg.redirect;
                     },
                     error: function (xhr) {
-                        this.submitted = "no";
+                        self.submitted = "no";
                         Ghost.notifications.clearEverything();
                         Ghost.notifications.addItem({
                             type: 'error',
@@ -2221,7 +1913,7 @@
             // and then update the placeholder value.
             if (title) {
                 $.ajax({
-                    url: Ghost.paths.apiRoot + '/posts/getSlug/' + encodeURIComponent(title) + '/',
+                    url: Ghost.paths.apiRoot + '/posts/slug/' + encodeURIComponent(title) + '/',
                     success: function (result) {
                         $postSettingSlugEl.attr('placeholder', result);
                     }
@@ -2725,14 +2417,8 @@
                         } else {
                             data[key] = this.$('.js-upload-target').attr('src');
                         }
-
-                        self.model.save(data, {
-                            success: self.saveSuccess,
-                            error: self.saveError
-                        }).then(function () {
-                            self.saveSettings();
-                        });
-
+                        self.model.set(data);
+                        self.saveSettings();
                         return true;
                     },
                     buttonClass: "button-save right",
@@ -2803,12 +2489,8 @@
                     } else {
                         data[key] = this.$('.js-upload-target').attr('src');
                     }
-                    self.model.save(data, {
-                        success: self.saveSuccess,
-                        error: self.saveError
-                    }).then(function () {
-                        self.saveUser();
-                    });
+                    self.model.set(data);
+                    self.saveUser(data);
                     return true;
                 },
                 buttonClass: "button-save right",

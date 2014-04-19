@@ -32329,369 +32329,6 @@ $.widget( "ui.tooltip", {
 
 }).call(this);
 
-/*
-
-Copyright (C) 2011 by Yehuda Katz
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in
-all copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
-THE SOFTWARE.
-
-*/
-
-// lib/handlebars/browser-prefix.js
-var Handlebars = {};
-
-(function(Handlebars, undefined) {
-;
-// lib/handlebars/base.js
-
-Handlebars.VERSION = "1.0.0";
-Handlebars.COMPILER_REVISION = 4;
-
-Handlebars.REVISION_CHANGES = {
-  1: '<= 1.0.rc.2', // 1.0.rc.2 is actually rev2 but doesn't report it
-  2: '== 1.0.0-rc.3',
-  3: '== 1.0.0-rc.4',
-  4: '>= 1.0.0'
-};
-
-Handlebars.helpers  = {};
-Handlebars.partials = {};
-
-var toString = Object.prototype.toString,
-    functionType = '[object Function]',
-    objectType = '[object Object]';
-
-Handlebars.registerHelper = function(name, fn, inverse) {
-  if (toString.call(name) === objectType) {
-    if (inverse || fn) { throw new Handlebars.Exception('Arg not supported with multiple helpers'); }
-    Handlebars.Utils.extend(this.helpers, name);
-  } else {
-    if (inverse) { fn.not = inverse; }
-    this.helpers[name] = fn;
-  }
-};
-
-Handlebars.registerPartial = function(name, str) {
-  if (toString.call(name) === objectType) {
-    Handlebars.Utils.extend(this.partials,  name);
-  } else {
-    this.partials[name] = str;
-  }
-};
-
-Handlebars.registerHelper('helperMissing', function(arg) {
-  if(arguments.length === 2) {
-    return undefined;
-  } else {
-    throw new Error("Missing helper: '" + arg + "'");
-  }
-});
-
-Handlebars.registerHelper('blockHelperMissing', function(context, options) {
-  var inverse = options.inverse || function() {}, fn = options.fn;
-
-  var type = toString.call(context);
-
-  if(type === functionType) { context = context.call(this); }
-
-  if(context === true) {
-    return fn(this);
-  } else if(context === false || context == null) {
-    return inverse(this);
-  } else if(type === "[object Array]") {
-    if(context.length > 0) {
-      return Handlebars.helpers.each(context, options);
-    } else {
-      return inverse(this);
-    }
-  } else {
-    return fn(context);
-  }
-});
-
-Handlebars.K = function() {};
-
-Handlebars.createFrame = Object.create || function(object) {
-  Handlebars.K.prototype = object;
-  var obj = new Handlebars.K();
-  Handlebars.K.prototype = null;
-  return obj;
-};
-
-Handlebars.logger = {
-  DEBUG: 0, INFO: 1, WARN: 2, ERROR: 3, level: 3,
-
-  methodMap: {0: 'debug', 1: 'info', 2: 'warn', 3: 'error'},
-
-  // can be overridden in the host environment
-  log: function(level, obj) {
-    if (Handlebars.logger.level <= level) {
-      var method = Handlebars.logger.methodMap[level];
-      if (typeof console !== 'undefined' && console[method]) {
-        console[method].call(console, obj);
-      }
-    }
-  }
-};
-
-Handlebars.log = function(level, obj) { Handlebars.logger.log(level, obj); };
-
-Handlebars.registerHelper('each', function(context, options) {
-  var fn = options.fn, inverse = options.inverse;
-  var i = 0, ret = "", data;
-
-  var type = toString.call(context);
-  if(type === functionType) { context = context.call(this); }
-
-  if (options.data) {
-    data = Handlebars.createFrame(options.data);
-  }
-
-  if(context && typeof context === 'object') {
-    if(context instanceof Array){
-      for(var j = context.length; i<j; i++) {
-        if (data) { data.index = i; }
-        ret = ret + fn(context[i], { data: data });
-      }
-    } else {
-      for(var key in context) {
-        if(context.hasOwnProperty(key)) {
-          if(data) { data.key = key; }
-          ret = ret + fn(context[key], {data: data});
-          i++;
-        }
-      }
-    }
-  }
-
-  if(i === 0){
-    ret = inverse(this);
-  }
-
-  return ret;
-});
-
-Handlebars.registerHelper('if', function(conditional, options) {
-  var type = toString.call(conditional);
-  if(type === functionType) { conditional = conditional.call(this); }
-
-  if(!conditional || Handlebars.Utils.isEmpty(conditional)) {
-    return options.inverse(this);
-  } else {
-    return options.fn(this);
-  }
-});
-
-Handlebars.registerHelper('unless', function(conditional, options) {
-  return Handlebars.helpers['if'].call(this, conditional, {fn: options.inverse, inverse: options.fn});
-});
-
-Handlebars.registerHelper('with', function(context, options) {
-  var type = toString.call(context);
-  if(type === functionType) { context = context.call(this); }
-
-  if (!Handlebars.Utils.isEmpty(context)) return options.fn(context);
-});
-
-Handlebars.registerHelper('log', function(context, options) {
-  var level = options.data && options.data.level != null ? parseInt(options.data.level, 10) : 1;
-  Handlebars.log(level, context);
-});
-;
-// lib/handlebars/utils.js
-
-var errorProps = ['description', 'fileName', 'lineNumber', 'message', 'name', 'number', 'stack'];
-
-Handlebars.Exception = function(message) {
-  var tmp = Error.prototype.constructor.apply(this, arguments);
-
-  // Unfortunately errors are not enumerable in Chrome (at least), so `for prop in tmp` doesn't work.
-  for (var idx = 0; idx < errorProps.length; idx++) {
-    this[errorProps[idx]] = tmp[errorProps[idx]];
-  }
-};
-Handlebars.Exception.prototype = new Error();
-
-// Build out our basic SafeString type
-Handlebars.SafeString = function(string) {
-  this.string = string;
-};
-Handlebars.SafeString.prototype.toString = function() {
-  return this.string.toString();
-};
-
-var escape = {
-  "&": "&amp;",
-  "<": "&lt;",
-  ">": "&gt;",
-  '"': "&quot;",
-  "'": "&#x27;",
-  "`": "&#x60;"
-};
-
-var badChars = /[&<>"'`]/g;
-var possible = /[&<>"'`]/;
-
-var escapeChar = function(chr) {
-  return escape[chr] || "&amp;";
-};
-
-Handlebars.Utils = {
-  extend: function(obj, value) {
-    for(var key in value) {
-      if(value.hasOwnProperty(key)) {
-        obj[key] = value[key];
-      }
-    }
-  },
-
-  escapeExpression: function(string) {
-    // don't escape SafeStrings, since they're already safe
-    if (string instanceof Handlebars.SafeString) {
-      return string.toString();
-    } else if (string == null || string === false) {
-      return "";
-    }
-
-    // Force a string conversion as this will be done by the append regardless and
-    // the regex test will do this transparently behind the scenes, causing issues if
-    // an object's to string has escaped characters in it.
-    string = string.toString();
-
-    if(!possible.test(string)) { return string; }
-    return string.replace(badChars, escapeChar);
-  },
-
-  isEmpty: function(value) {
-    if (!value && value !== 0) {
-      return true;
-    } else if(toString.call(value) === "[object Array]" && value.length === 0) {
-      return true;
-    } else {
-      return false;
-    }
-  }
-};
-;
-// lib/handlebars/runtime.js
-
-Handlebars.VM = {
-  template: function(templateSpec) {
-    // Just add water
-    var container = {
-      escapeExpression: Handlebars.Utils.escapeExpression,
-      invokePartial: Handlebars.VM.invokePartial,
-      programs: [],
-      program: function(i, fn, data) {
-        var programWrapper = this.programs[i];
-        if(data) {
-          programWrapper = Handlebars.VM.program(i, fn, data);
-        } else if (!programWrapper) {
-          programWrapper = this.programs[i] = Handlebars.VM.program(i, fn);
-        }
-        return programWrapper;
-      },
-      merge: function(param, common) {
-        var ret = param || common;
-
-        if (param && common) {
-          ret = {};
-          Handlebars.Utils.extend(ret, common);
-          Handlebars.Utils.extend(ret, param);
-        }
-        return ret;
-      },
-      programWithDepth: Handlebars.VM.programWithDepth,
-      noop: Handlebars.VM.noop,
-      compilerInfo: null
-    };
-
-    return function(context, options) {
-      options = options || {};
-      var result = templateSpec.call(container, Handlebars, context, options.helpers, options.partials, options.data);
-
-      var compilerInfo = container.compilerInfo || [],
-          compilerRevision = compilerInfo[0] || 1,
-          currentRevision = Handlebars.COMPILER_REVISION;
-
-      if (compilerRevision !== currentRevision) {
-        if (compilerRevision < currentRevision) {
-          var runtimeVersions = Handlebars.REVISION_CHANGES[currentRevision],
-              compilerVersions = Handlebars.REVISION_CHANGES[compilerRevision];
-          throw "Template was precompiled with an older version of Handlebars than the current runtime. "+
-                "Please update your precompiler to a newer version ("+runtimeVersions+") or downgrade your runtime to an older version ("+compilerVersions+").";
-        } else {
-          // Use the embedded version info since the runtime doesn't know about this revision yet
-          throw "Template was precompiled with a newer version of Handlebars than the current runtime. "+
-                "Please update your runtime to a newer version ("+compilerInfo[1]+").";
-        }
-      }
-
-      return result;
-    };
-  },
-
-  programWithDepth: function(i, fn, data /*, $depth */) {
-    var args = Array.prototype.slice.call(arguments, 3);
-
-    var program = function(context, options) {
-      options = options || {};
-
-      return fn.apply(this, [context, options.data || data].concat(args));
-    };
-    program.program = i;
-    program.depth = args.length;
-    return program;
-  },
-  program: function(i, fn, data) {
-    var program = function(context, options) {
-      options = options || {};
-
-      return fn(context, options.data || data);
-    };
-    program.program = i;
-    program.depth = 0;
-    return program;
-  },
-  noop: function() { return ""; },
-  invokePartial: function(partial, name, context, helpers, partials, data) {
-    var options = { helpers: helpers, partials: partials, data: data };
-
-    if(partial === undefined) {
-      throw new Handlebars.Exception("The partial " + name + " could not be found");
-    } else if(partial instanceof Function) {
-      return partial(context, options);
-    } else if (!Handlebars.compile) {
-      throw new Handlebars.Exception("The partial " + name + " could not be compiled when running in runtime-only mode");
-    } else {
-      partials[name] = Handlebars.compile(partial, {data: data !== undefined});
-      return partials[name](context, options);
-    }
-  }
-};
-
-Handlebars.template = Handlebars.VM.template;
-;
-// lib/handlebars/browser-suffix.js
-})(Handlebars);
-;
-
 //! moment.js
 //! version : 2.4.0
 //! authors : Tim Wood, Iskren Chernev, Moment.js contributors
@@ -44771,8 +44408,17 @@ if (typeof define === 'function' && define.amd) {
 });
 
 /* jshint node:true, browser:true */
+
+// Ghost Image Preview
+//
+// Manages the conversion of image markdown `![]()` from markdown into the HTML image preview
+// This provides a dropzone and other interface elements for adding images
+// Is only used in the admin client.
+
+
+var Ghost = Ghost || {};
 (function () {
-    var ghostdown = function () {
+    var ghostimagepreview = function () {
         return [
             // ![] image syntax
             {
@@ -44784,25 +44430,24 @@ if (typeof define === 'function' && define.amd) {
                         pathRegex = /^(\/)?([^\/\0]+(\/)?)+$/i;
 
                     return text.replace(imageMarkdownRegex, function (match, key, alt, src) {
-                        var result = "";
+                        var result = '',
+                            output;
 
                         if (src && (src.match(uriRegex) || src.match(pathRegex))) {
                             result = '<img class="js-upload-target" src="' + src + '"/>';
                         }
-                        return '<section id="image_upload_' + key + '" class="js-drop-zone image-uploader">' + result +
-                               '<div class="description">Add image of <strong>' + alt + '</strong></div>' +
-                               '<input data-url="upload" class="js-fileupload main fileupload" type="file" name="uploadimage">' +
-                               '</section>';
-                    });
-                }
-            },
 
-            // 4 or more inline underscores e.g. Ghost rocks my _____!
-            {
-                type: 'lang',
-                filter: function (text) {
-                    return text.replace(/([^_\n\r])(_{4,})/g, function (match, prefix, underscores) {
-                        return prefix + underscores.replace(/_/g, '&#95;');
+                        if (Ghost && Ghost.touchEditor) {
+                            output = '<section class="image-uploader">' +
+                                result + '<div class="description">Mobile uploads coming soon</div></section>';
+                        } else {
+                            output = '<section id="image_upload_' + key + '" class="js-drop-zone image-uploader">' +
+                                result + '<div class="description">Add image of <strong>' + alt + '</strong></div>' +
+                                '<input data-url="upload" class="js-fileupload main fileupload" type="file" name="uploadimage">' +
+                                '</section>';
+                        }
+
+                        return output;
                     });
                 }
             }
@@ -44811,136 +44456,27 @@ if (typeof define === 'function' && define.amd) {
 
     // Client-side export
     if (typeof window !== 'undefined' && window.Showdown && window.Showdown.extensions) {
-        window.Showdown.extensions.ghostdown = ghostdown;
+        window.Showdown.extensions.ghostimagepreview = ghostimagepreview;
     }
     // Server-side export
     if (typeof module !== 'undefined') {
-        module.exports = ghostdown;
+        module.exports = ghostimagepreview;
     }
 }());
 
-/*global module */
+/* jshint node:true, browser:true */
+
+// Ghost GFM
+// Taken and extended from the Showdown Github Extension (WIP)
+// Makes a number of pre and post-processing changes to the way markdown is handled
 //
-// Replaces straight quotes with curly ones, -- and --- with en dash and em
-// dash respectively, and ... with horizontal ellipses.
-//
+//  ~~strike-through~~   ->  <del>strike-through</del> (Pre)
+//  GFM newlines & underscores (Pre)
+//  4 or more underscores (Pre)
+//  autolinking / custom image handling (Post)
 
 (function () {
-    var typography = function () {
-        return [
-            {
-                type: "lang",
-                filter: function (text) {
-                    var fCodeblocks = {}, nCodeblocks = {}, iCodeblocks = {},
-                        e = {
-                            endash: '\u2009\u2013\u2009', // U+2009 = thin space
-                            emdash: '\u2014',
-                            lsquo:  '\u2018',
-                            rsquo:  '\u2019',
-                            ldquo:  '\u201c',
-                            rdquo:  '\u201d',
-                            hellip: '\u2026'
-                        },
-
-                        i;
-
-                    // Extract fenced code blocks.
-                    i = -1;
-                    text = text.replace(/```((?:.|\n)+?)```/g,
-                        function (match, code) {
-                            i += 1;
-                            fCodeblocks[i] = "```" + code + "```";
-                            return "{typog-fcb-" + i + "}";
-                        });
-
-                    // Extract indented code blocks.
-                    i = -1;
-                    text = text.replace(/((\n+([ ]{4}|\t).+)+)/g,
-                        function (match, code) {
-                            i += 1;
-                            nCodeblocks[i] = "    " + code;
-                            return "{typog-ncb-" + i + "}";
-                        });
-
-                    // Extract inline code blocks
-                    i = -1;
-                    text = text.replace(/`(.+)`/g, function (match, code) {
-                            i += 1;
-                            iCodeblocks[i] = "`" + code + "`";
-                            return "{typog-icb-" + i + "}";
-                        });
-
-                    // Perform typographic symbol replacement.
-
-                    // Double quotes. There might be a reason this doesn't use
-                    // the same \b matching style as the single quotes, but I
-                    // can't remember what it is :(
-                    text = text.
-                        // Opening quotes
-                        replace(/"([\w'])/g, e.ldquo + "$1").
-                        // All the rest
-                        replace(/"/g, e.rdquo);
-
-                    // Single quotes/apostrophes
-                    text = text.
-                        // Apostrophes first
-                        replace(/\b'\b/g, e.rsquo).
-                        // Opening quotes
-                        replace(/'\b/g, e.lsquo).
-                        // All the rest
-                        replace(/'/g, e.rsquo);
-
-                    // Dashes
-                    text = text.
-                        // Don't replace lines containing only hyphens
-                        replace(/^-+$/gm, "{typog-hr}").
-                        replace(/---/g, e.emdash).
-                        replace(/ -- /g, e.endash).
-                        replace(/{typog-hr}/g, "----");
-
-                    // Ellipses.
-                    text = text.replace(/\.{3}/g, e.hellip);
-
-
-                    // Restore fenced code blocks.
-                    text = text.replace(/{typog-fcb-([0-9]+)}/g, function (x, y) {
-                        return  fCodeblocks[y];
-                    });
-
-                    // Restore indented code blocks.
-                    text = text.replace(/{typog-ncb-([0-9]+)}/g, function (x, y) {
-                        return  nCodeblocks[y];
-                    });
-
-                    // Restore inline code blocks.
-                    text = text.replace(/{typog-icb-([0-9]+)}/g, function (x, y) {
-                        return iCodeblocks[y];
-                    });
-
-                    return text;
-                }
-            }
-        ];
-    };
-
-    // Client-side export
-    if (typeof window !== 'undefined' && window.Showdown && window.Showdown.extensions) {
-        window.Showdown.extensions.typography = typography;
-    }
-    // Server-side export
-    if (typeof module !== 'undefined') {
-        module.exports = typography;
-    }
-}());
-
-
-//
-//  Github Extension (WIP)
-//  ~~strike-through~~   ->  <del>strike-through</del>
-//
-
-(function () {
-    var github = function (converter) {
+    var ghostgfm = function () {
         return [
             {
                 // strike-through
@@ -45009,6 +44545,17 @@ if (typeof define === 'function' && define.amd) {
                     return text;
                 }
             },
+
+            // 4 or more inline underscores e.g. Ghost rocks my _____!
+            {
+                type: 'lang',
+                filter: function (text) {
+                    return text.replace(/([^_\n\r])(_{4,})/g, function (match, prefix, underscores) {
+                        return prefix + underscores.replace(/_/g, '&#95;');
+                    });
+                }
+            },
+
             {
                 // GFM autolinking & custom image handling, happens AFTER showdown
                 type    : 'html',
@@ -45067,9 +44614,13 @@ if (typeof define === 'function' && define.amd) {
     };
 
     // Client-side export
-    if (typeof window !== 'undefined' && window.Showdown && window.Showdown.extensions) { window.Showdown.extensions.github = github; }
+    if (typeof window !== 'undefined' && window.Showdown && window.Showdown.extensions) {
+        window.Showdown.extensions.ghostgfm = ghostgfm;
+    }
     // Server-side export
-    if (typeof module !== 'undefined') module.exports = github;
+    if (typeof module !== 'undefined') {
+        module.exports = ghostgfm;
+    }
 }());
 
 /**
@@ -47085,13 +46636,13 @@ if (typeof define !== 'undefined' && define.amd) {
     CodeMirror.prototype.addMarkdown.options = {
         style: null,
         syntax: {
-            bold: "**$1**",
-            italic: "*$1*",
-            strike: "~~$1~~",
-            code: "`$1`",
-            link: "[$1](http://)",
-            image: "![$1](http://)",
-            blockquote: "> $1"
+            bold: '**$1**',
+            italic: '*$1*',
+            strike: '~~$1~~',
+            code: '`$1`',
+            link: '[$1](http://)',
+            image: '![$1](http://)',
+            blockquote: '> $1'
         }
     };
 
@@ -47151,6 +46702,696 @@ if (typeof define !== 'undefined' && define.amd) {
     });
 }());
 
+// # Ghost Editor
+//
+// Ghost Editor contains a set of modules which make up the editor component
+// It manages the left and right panes, and all of the communication between them
+// Including scrolling,
+
+/*global document, $, _, Ghost */
+(function () {
+    'use strict';
+
+    var Editor = function () {
+        var self = this,
+            $document = $(document),
+        // Create all the needed editor components, passing them what they need to function
+            markdown = new Ghost.Editor.MarkdownEditor(),
+            uploadMgr = new Ghost.Editor.UploadManager(markdown),
+            preview = new Ghost.Editor.HTMLPreview(markdown, uploadMgr),
+            scrollHandler = new Ghost.Editor.ScrollHandler(markdown, preview),
+            unloadDirtyMessage,
+            handleChange,
+            handleDrag;
+
+        unloadDirtyMessage = function () {
+            return '==============================\n\n' +
+                'Hey there! It looks like you\'re in the middle of writing' +
+                ' something and you haven\'t saved all of your content.' +
+                '\n\nSave before you go!\n\n' +
+                '==============================';
+        };
+
+        handleChange = function () {
+            self.setDirty(true);
+            preview.update();
+        };
+
+        handleDrag = function (e) {
+            e.preventDefault();
+        };
+
+        // Public API
+        _.extend(this, {
+            enable: function () {
+                // Listen for changes
+                $document.on('markdownEditorChange', handleChange);
+
+                // enable editing and scrolling
+                markdown.enable();
+                scrollHandler.enable();
+            },
+
+            disable: function () {
+                // Don't listen for changes
+                $document.off('markdownEditorChange', handleChange);
+
+                // disable editing and scrolling
+                markdown.disable();
+                scrollHandler.disable();
+            },
+
+            // Get the markdown value from the editor for saving
+            // Upload manager makes sure the upload markers are removed beforehand
+            value: function () {
+                return uploadMgr.value();
+            },
+
+            setDirty: function (dirty) {
+                window.onbeforeunload = dirty ? unloadDirtyMessage : null;
+            }
+        });
+
+         // Initialise
+        $document.on('drop dragover', handleDrag);
+        preview.update();
+        this.enable();
+    };
+
+    Ghost.Editor = Ghost.Editor || {};
+    Ghost.Editor.Main = Editor;
+}());
+// # Ghost Editor Marker Manager
+//
+// MarkerManager looks after the array of markers which are attached to image markdown in the editor.
+//
+// Marker Manager is told by the Upload Manager to add a marker to a line.
+// A marker takes the form of a 'magic id' which looks like:
+// {<1>}
+// It is appended to the start of the given line, and then defined as a CodeMirror 'TextMarker' widget which is
+// subsequently added to an array of markers to keep track of all markers in the editor.
+// The TextMarker is also set to 'collapsed' mode which means it does not show up in the display.
+// Currently, the markers can be seen if you copy and paste your content out of Ghost into a text editor.
+// The markers are stripped on save so should not appear in the DB
+
+
+/*global _, Ghost */
+
+(function () {
+    'use strict';
+
+    var imageMarkdownRegex = /^(?:\{<(.*?)>\})?!(?:\[([^\n\]]*)\])(?:\(([^\n\]]*)\))?$/gim,
+        markerRegex = /\{<([\w\W]*?)>\}/,
+        MarkerManager;
+
+    MarkerManager = function (editor) {
+        var markers = {},
+            uploadPrefix = 'image_upload',
+            uploadId = 1,
+            addMarker,
+            removeMarker,
+            markerRegexForId,
+            stripMarkerFromLine,
+            findAndStripMarker,
+            checkMarkers,
+            initMarkers;
+
+        // the regex
+        markerRegexForId = function (id) {
+            id = id.replace('image_upload_', '');
+            return new RegExp('\\{<' + id + '>\\}', 'gmi');
+        };
+
+        // Add a marker to the given line
+        // Params:
+        // line - CodeMirror LineHandle
+        // ln - line number
+        addMarker = function (line, ln) {
+            var marker,
+                magicId = '{<' + uploadId + '>}',
+                newText = magicId + line.text;
+
+            editor.replaceRange(
+                newText,
+                {line: ln, ch: 0},
+                {line: ln, ch: newText.length}
+            );
+
+            marker = editor.markText(
+                {line: ln, ch: 0},
+                {line: ln, ch: (magicId.length)},
+                {collapsed: true}
+            );
+
+            markers[uploadPrefix + '_' + uploadId] = marker;
+            uploadId += 1;
+        };
+
+        // Remove a marker
+        // Will be passed a LineHandle if we already know which line the marker is on
+        removeMarker = function (id, marker, line) {
+            delete markers[id];
+            marker.clear();
+
+            if (line) {
+                stripMarkerFromLine(line);
+            } else {
+                findAndStripMarker(id);
+            }
+        };
+
+        // Removes the marker on the given line if there is one
+        stripMarkerFromLine = function (line) {
+            var markerText = line.text.match(markerRegex),
+                ln = editor.getLineNumber(line);
+
+            if (markerText) {
+                editor.replaceRange(
+                    '',
+                    {line: ln, ch: markerText.index},
+                    {line: ln, ch: markerText.index + markerText[0].length}
+                );
+            }
+        };
+
+        // Find a marker in the editor by id & remove it
+        // Goes line by line to find the marker by it's text if we've lost track of the TextMarker
+        findAndStripMarker = function (id) {
+            editor.eachLine(function (line) {
+                var markerText = markerRegexForId(id).exec(line.text),
+                    ln;
+
+                if (markerText) {
+                    ln = editor.getLineNumber(line);
+                    editor.replaceRange(
+                        '',
+                        {line: ln, ch: markerText.index},
+                        {line: ln, ch: markerText.index + markerText[0].length}
+                    );
+                }
+            });
+        };
+
+        // Check each marker to see if it is still present in the editor and if it still corresponds to image markdown
+        // If it is no longer a valid image, remove it
+        checkMarkers = function () {
+            _.each(markers, function (marker, id) {
+                var line;
+                marker = markers[id];
+                if (marker.find()) {
+                    line = editor.getLineHandle(marker.find().from.line);
+                    if (!line.text.match(imageMarkdownRegex)) {
+                        removeMarker(id, marker, line);
+                    }
+                } else {
+                    removeMarker(id, marker);
+                }
+            });
+        };
+
+        // Add markers to the line if it needs one
+        initMarkers = function (line) {
+            var isImage = line.text.match(imageMarkdownRegex),
+                hasMarker = line.text.match(markerRegex);
+
+            if (isImage && !hasMarker) {
+                addMarker(line, editor.getLineNumber(line));
+            }
+        };
+
+        // Initialise
+        editor.eachLine(initMarkers);
+
+        // Public API
+        _.extend(this, {
+            markers: markers,
+            checkMarkers: checkMarkers,
+            addMarker: addMarker,
+            stripMarkerFromLine: stripMarkerFromLine,
+            getMarkerRegexForId: markerRegexForId
+        });
+    };
+
+    Ghost.Editor = Ghost.Editor || {};
+    Ghost.Editor.MarkerManager = MarkerManager;
+}());
+// # Ghost Editor Upload Manager
+//
+// UploadManager ensures that markdown gets updated when images get uploaded via the Preview.
+//
+// The Ghost Editor has a particularly tricky problem to solve, in that it is possible to upload an image by
+// interacting with the preview. The process of uploading an image is handled by uploader.js, but there is still
+// a lot of work needed to ensure that uploaded files end up in the right place - that is that the image
+// path gets added to the correct piece of markdown in the editor.
+//
+// To solve this, Ghost adds a unique 'marker' to each piece of markdown which represents an image:
+// More detail about how the markers work can be find in markerManager.js
+//
+// UploadManager handles changes in the editor, looking for text which matches image markdown, and telling the marker
+// manager to add a marker. It also checks changed lines to see if they have a marker but are no longer an image.
+//
+// UploadManager's most important job is handling uploads such that when a successful upload completes, the correct
+// piece of image markdown is updated with the path.
+// This is done in part by ghostImagePreview.js, which takes the marker from the markdown and uses it to create an ID
+// on the dropzone. When an upload completes successfully from uploader.js, the event thrown contains reference to the
+// dropzone, from which uploadManager can pull the ID & then get the right marker from the Marker Manager.
+//
+// Without a doubt, the separation of concerns between the uploadManager, and the markerManager could be vastly
+// improved
+
+
+/*global $, _, Ghost */
+(function () {
+    'use strict';
+
+    var imageMarkdownRegex = /^(?:\{<(.*?)>\})?!(?:\[([^\n\]]*)\])(?:\(([^\n\]]*)\))?$/gim,
+        markerRegex = /\{<([\w\W]*?)>\}/,
+        UploadManager;
+
+    UploadManager = function (markdown) {
+        var editor = markdown.codemirror,
+            markerMgr = new Ghost.Editor.MarkerManager(editor),
+            findLine,
+            checkLine,
+            value,
+            handleUpload,
+            handleChange;
+
+        // Find the line with the marker which matches
+        findLine = function (result_id) {
+            // try to find the right line to replace
+            if (markerMgr.markers.hasOwnProperty(result_id) && markerMgr.markers[result_id].find()) {
+                return editor.getLineHandle(markerMgr.markers[result_id].find().from.line);
+            }
+
+            return false;
+        };
+
+        // Check the given line to see if it has an image, and if it correctly has a marker
+        // In the special case of lines which were just pasted in, any markers are removed to prevent duplication
+        checkLine = function (ln, mode) {
+            var line = editor.getLineHandle(ln),
+                isImage = line.text.match(imageMarkdownRegex),
+                hasMarker;
+
+            // We care if it is an image
+            if (isImage) {
+                hasMarker = line.text.match(markerRegex);
+
+                if (hasMarker && (mode === 'paste' || mode === 'undo')) {
+                    // this could be a duplicate, and won't be a real marker
+                    markerMgr.stripMarkerFromLine(line);
+                }
+
+                if (!hasMarker) {
+                    markerMgr.addMarker(line, ln);
+                }
+            }
+            // TODO: hasMarker but no image?
+        };
+
+        // Get the markdown with all the markers stripped
+        value = function () {
+            var value = editor.getValue();
+
+            _.each(markerMgr.markers, function (marker, id) {
+                /*jshint unused:false*/
+                value = value.replace(markerMgr.getMarkerRegexForId(id), '');
+            });
+
+            return value;
+        };
+
+        // Match the uploaded file to a line in the editor, and update that line with a path reference
+        // ensuring that everything ends up in the correct place and format.
+        handleUpload = function (e, result_src) {
+            var line = findLine($(e.currentTarget).attr('id')),
+                lineNumber = editor.getLineNumber(line),
+                match = line.text.match(/\([^\n]*\)?/),
+                replacement = '(http://)';
+
+            if (match) {
+                // simple case, we have the parenthesis
+                editor.setSelection(
+                    {line: lineNumber, ch: match.index + 1},
+                    {line: lineNumber, ch: match.index + match[0].length - 1}
+                );
+            } else {
+                match = line.text.match(/\]/);
+                if (match) {
+                    editor.replaceRange(
+                        replacement,
+                        {line: lineNumber, ch: match.index + 1},
+                        {line: lineNumber, ch: match.index + 1}
+                    );
+                    editor.setSelection(
+                        {line: lineNumber, ch: match.index + 2},
+                        {line: lineNumber, ch: match.index + replacement.length }
+                    );
+                }
+            }
+            editor.replaceSelection(result_src);
+        };
+
+        // Change events from CodeMirror tell us which lines have changed.
+        // Each changed line is then checked to see if a marker needs to be added or removed
+        handleChange = function (cm, changeObj) {
+            /*jshint unused:false*/
+            var linesChanged = _.range(changeObj.from.line, changeObj.from.line + changeObj.text.length);
+
+            _.each(linesChanged, function (ln) {
+                checkLine(ln, changeObj.origin);
+            });
+
+            // Is this a line which may have had a marker on it?
+            markerMgr.checkMarkers();
+        };
+
+        // Public API
+        _.extend(this, {
+            value: value,
+            enable: function () {
+                var filestorage = $('#entry-markdown-content').data('filestorage');
+                $('.js-drop-zone').upload({editor: true, fileStorage: filestorage});
+                $('.js-drop-zone').on('uploadstart', markdown.off);
+                $('.js-drop-zone').on('uploadfailure', markdown.on);
+                $('.js-drop-zone').on('uploadsuccess', markdown.on);
+                $('.js-drop-zone').on('uploadsuccess', handleUpload);
+            },
+            disable: function () {
+                $('.js-drop-zone').off('uploadsuccess', handleUpload);
+            }
+        });
+
+        editor.on('change', handleChange);
+    };
+    Ghost.Editor = Ghost.Editor || {};
+    Ghost.Editor.UploadManager = UploadManager;
+}());
+// # Ghost Editor Markdown Editor
+//
+// Markdown Editor is a light wrapper around CodeMirror
+
+/*global Ghost, CodeMirror, shortcut, _, $ */
+(function () {
+    'use strict';
+
+    var MarkdownShortcuts,
+        MarkdownEditor;
+
+    MarkdownShortcuts = [
+        {'key': 'Ctrl+Alt+U', 'style': 'strike'},
+        {'key': 'Ctrl+Shift+K', 'style': 'code'},
+        {'key': 'Meta+K', 'style': 'code'},
+        {'key': 'Ctrl+Alt+1', 'style': 'h1'},
+        {'key': 'Ctrl+Alt+2', 'style': 'h2'},
+        {'key': 'Ctrl+Alt+3', 'style': 'h3'},
+        {'key': 'Ctrl+Alt+4', 'style': 'h4'},
+        {'key': 'Ctrl+Alt+5', 'style': 'h5'},
+        {'key': 'Ctrl+Alt+6', 'style': 'h6'},
+        {'key': 'Ctrl+Shift+L', 'style': 'link'},
+        {'key': 'Ctrl+Shift+I', 'style': 'image'},
+        {'key': 'Ctrl+Q', 'style': 'blockquote'},
+        {'key': 'Ctrl+Shift+1', 'style': 'currentDate'},
+        {'key': 'Ctrl+U', 'style': 'uppercase'},
+        {'key': 'Ctrl+Shift+U', 'style': 'lowercase'},
+        {'key': 'Ctrl+Alt+Shift+U', 'style': 'titlecase'},
+        {'key': 'Ctrl+Alt+W', 'style': 'selectword'},
+        {'key': 'Ctrl+L', 'style': 'list'}
+    ];
+
+    if (navigator.userAgent.indexOf('Mac') !== -1) {
+        MarkdownShortcuts.push({'key': 'Meta+B', 'style': 'bold'});
+        MarkdownShortcuts.push({'key': 'Meta+I', 'style': 'italic'});
+        MarkdownShortcuts.push({'key': 'Meta+Alt+C', 'style': 'copyHTML'});
+        MarkdownShortcuts.push({'key': 'Meta+Enter', 'style': 'newLine'});
+    } else {
+        MarkdownShortcuts.push({'key': 'Ctrl+B', 'style': 'bold'});
+        MarkdownShortcuts.push({'key': 'Ctrl+I', 'style': 'italic'});
+        MarkdownShortcuts.push({'key': 'Ctrl+Alt+C', 'style': 'copyHTML'});
+        MarkdownShortcuts.push({'key': 'Ctrl+Enter', 'style': 'newLine'});
+
+    }
+
+    MarkdownEditor = function () {
+        var codemirror = CodeMirror.fromTextArea(document.getElementById('entry-markdown'), {
+            mode:           'gfm',
+            tabMode:        'indent',
+            tabindex:       '2',
+            cursorScrollMargin: 10,
+            lineWrapping:   true,
+            dragDrop:       false,
+            extraKeys: {
+                Home:   'goLineLeft',
+                End:    'goLineRight'
+            }
+        });
+
+        // Markdown shortcuts for the editor
+        _.each(MarkdownShortcuts, function (combo) {
+            shortcut.add(combo.key, function () {
+                return codemirror.addMarkdown({style: combo.style});
+            });
+        });
+
+        // Public API
+        _.extend(this, {
+            codemirror: codemirror,
+
+            scrollViewPort: function () {
+                return $('.CodeMirror-scroll');
+            },
+            scrollContent: function () {
+                return $('.CodeMirror-sizer');
+            },
+            enable: function () {
+                codemirror.setOption('readOnly', false);
+                codemirror.on('change', function () {
+                    $(document).trigger('markdownEditorChange');
+                });
+            },
+            disable: function () {
+                codemirror.setOption('readOnly', 'nocursor');
+                codemirror.off('change', function () {
+                    $(document).trigger('markdownEditorChange');
+                });
+            },
+            isCursorAtEnd: function () {
+                return codemirror.getCursor('end').line > codemirror.lineCount() - 5;
+            },
+            value: function () {
+                return codemirror.getValue();
+            }
+        });
+    };
+
+    Ghost.Editor = Ghost.Editor || {};
+    Ghost.Editor.MarkdownEditor = MarkdownEditor;
+} ());
+
+// # Ghost Editor HTML Preview
+//
+// HTML Preview is the right pane in the split view editor.
+// It is effectively just a scrolling container for the HTML output from showdown
+// It knows how to update itself, and that's pretty much it.
+
+/*global Ghost, Showdown, Countable, _, $ */
+(function () {
+    'use strict';
+
+    var HTMLPreview = function (markdown, uploadMgr) {
+        var converter = new Showdown.converter({extensions: ['ghostimagepreview', 'ghostgfm']}),
+            preview = document.getElementsByClassName('rendered-markdown')[0],
+            update;
+
+        // Update the preview
+        // Includes replacing all the HTML, intialising upload dropzones, and updating the counter
+        update = function () {
+            preview.innerHTML = converter.makeHtml(markdown.value());
+
+            uploadMgr.enable();
+
+            Countable.once(preview, function (counter) {
+                $('.entry-word-count').text($.pluralize(counter.words, 'word'));
+                $('.entry-character-count').text($.pluralize(counter.characters, 'character'));
+                $('.entry-paragraph-count').text($.pluralize(counter.paragraphs, 'paragraph'));
+            });
+        };
+
+        // Public API
+        _.extend(this, {
+            scrollViewPort: function () {
+                return $('.entry-preview-content');
+            },
+            scrollContent: function () {
+                return $('.rendered-markdown');
+            },
+            update: update
+        });
+    };
+
+    Ghost.Editor = Ghost.Editor || {};
+    Ghost.Editor.HTMLPreview = HTMLPreview;
+} ());
+// # Ghost Editor Scroll Handler
+//
+// Scroll Handler does the (currently very simple / naive) job of syncing the right pane with the left pane
+// as the right pane scrolls
+
+/*global Ghost, _ */
+(function () {
+    'use strict';
+
+    var ScrollHandler = function (markdown, preview) {
+        var $markdownViewPort = markdown.scrollViewPort(),
+            $previewViewPort = preview.scrollViewPort(),
+            $markdownContent = markdown.scrollContent(),
+            $previewContent = preview.scrollContent(),
+            syncScroll;
+
+        syncScroll = _.throttle(function () {
+            // calc position
+            var markdownHeight = $markdownContent.height() - $markdownViewPort.height(),
+                previewHeight = $previewContent.height() - $previewViewPort.height(),
+                ratio = previewHeight / markdownHeight,
+                previewPosition = $markdownViewPort.scrollTop() * ratio;
+
+            if (markdown.isCursorAtEnd()) {
+                previewPosition = previewHeight + 30;
+            }
+
+            // apply new scroll
+            $previewViewPort.scrollTop(previewPosition);
+        }, 10);
+
+        _.extend(this, {
+            enable: function () { // Handle Scroll Events
+                $markdownViewPort.on('scroll', syncScroll);
+                $markdownViewPort.scrollClass({target: '.entry-markdown', offset: 10});
+                $previewViewPort.scrollClass({target: '.entry-preview', offset: 10});
+            },
+            disable: function () {
+                $markdownViewPort.off('scroll', syncScroll);
+            }
+        });
+
+    };
+
+    Ghost.Editor = Ghost.Editor || {};
+    Ghost.Editor.ScrollHandler = ScrollHandler;
+} ());
+// Taken from js-bin with thanks to Remy Sharp
+// yeah, nasty, but it allows me to switch from a RTF to plain text if we're running a iOS
+
+/*global Ghost, $, _, DocumentTouch, CodeMirror*/
+(function () {
+    Ghost.touchEditor = false;
+
+    var noop = function () {},
+        hasTouchScreen,
+        smallScreen,
+        TouchEditor,
+        _oldCM,
+        key;
+
+    // Taken from "Responsive design & the Guardian" with thanks to Matt Andrews
+    // Added !window._phantom so that the functional tests run as though this is not a touch screen.
+    // In future we can do something more advanced here for testing both touch and non touch
+    hasTouchScreen = function () {
+        return !window._phantom &&
+            (
+                ('ontouchstart' in window) ||
+                (window.DocumentTouch && document instanceof DocumentTouch)
+            );
+    };
+
+    smallScreen = function () {
+        if (window.matchMedia('(max-width: 1000px)').matches) {
+            return true;
+        }
+
+        return false;
+    };
+
+    if (hasTouchScreen()) {
+        $('body').addClass('touch-editor');
+        Ghost.touchEditor = true;
+
+        TouchEditor = function (el, options) {
+            /*jshint unused:false*/
+            this.textarea = el;
+            this.win = { document : this.textarea };
+            this.ready = true;
+            this.wrapping = document.createElement('div');
+
+            var textareaParent = this.textarea.parentNode;
+            this.wrapping.appendChild(this.textarea);
+            textareaParent.appendChild(this.wrapping);
+
+            this.textarea.style.opacity = 1;
+
+            $(this.textarea).blur(_.throttle(function () {
+                $(document).trigger('markdownEditorChange', { panelId: el.id });
+            }, 200));
+
+            if (!smallScreen()) {
+                $(this.textarea).on('change', _.throttle(function () {
+                    $(document).trigger('markdownEditorChange', { panelId: el.id });
+                }, 200));
+            }
+        };
+
+        TouchEditor.prototype = {
+            setOption: function (type, handler) {
+                if (type === 'onChange') {
+                    $(this.textarea).change(handler);
+                }
+            },
+            eachLine: function () {
+                return [];
+            },
+            getValue: function () {
+                return this.textarea.value;
+            },
+            setValue: function (code) {
+                this.textarea.value = code;
+            },
+            focus: noop,
+            getCursor: function () {
+                return { line: 0, ch: 0 };
+            },
+            setCursor: noop,
+            currentLine: function () {
+                return 0;
+            },
+            cursorPosition: function () {
+                return { character: 0 };
+            },
+            addMarkdown: noop,
+            nthLine: noop,
+            refresh: noop,
+            selectLines: noop,
+            on: noop
+        };
+
+        _oldCM = CodeMirror;
+
+        // CodeMirror = noop;
+
+        for (key in _oldCM) {
+            if (_oldCM.hasOwnProperty(key)) {
+                CodeMirror[key] = noop;
+            }
+        }
+
+        CodeMirror.fromTextArea = function (el, options) {
+            return new TouchEditor(el, options);
+        };
+
+        CodeMirror.keyMap = { basic: {} };
+
+    }
+}());
 this["JST"] = this["JST"] || {};
 
 this["JST"]["forgotten"] = Handlebars.template(function (Handlebars,depth0,helpers,partials,data) {
@@ -47377,7 +47618,7 @@ helpers = this.merge(helpers, Handlebars.helpers); data = data || {};
   
 
 
-  return "<section class=\"markdown-help-container\">\n    <table class=\"modal-markdown-help-table\">\n        <thead>\n            <tr>\n                <th>Result</th>\n                <th>Markdown</th>\n                <th>Shortcut</th>\n            </tr>\n        </thead>\n        <tbody>\n            <tr>\n                <td><strong>Bold</strong></td>\n                <td>**text**</td>\n                <td>Ctrl / Cmd + B</td>\n            </tr>\n            <tr>\n                <td><em>Emphasize</em></td>\n                <td>*text*</td>\n                <td>Ctrl / Cmd + I</td>\n            </tr>\n            <tr>\n                <td><code>Inline Code</code></td>\n                <td>`code`</td>\n                <td>Cmd + K / Ctrl + Shift + K</td>\n            </tr>\n            <tr>\n                <td>Strike-through</td>\n                <td>~~text~~</td>\n                <td>Ctrl + Alt + U</td>\n            </tr>\n            <tr>\n                <td><a href=\"#\">Link</a></td>\n                <td>[title](http://)</td>\n                <td>Ctrl + Shift + L</td>\n            </tr>\n            <tr>\n                <td>Image</td>\n                <td>![alt](http://)</td>\n                <td>Ctrl + Shift + I</td>\n            </tr>\n            <tr>\n                <td>List</td>\n                <td>* item</td>\n                <td>Ctrl + L</td>\n            </tr>\n            <tr>\n                <td>Blockquote</td>\n                <td>> quote</td>\n                <td>Ctrl + Q</td>\n            </tr>\n            <tr>\n                <td>H1</td>\n                <td># Heading</td>\n                <td>Ctrl + Alt + 1</td>\n            </tr>\n            <tr>\n                <td>H2</td>\n                <td>## Heading</td>\n                <td>Ctrl + Alt + 2</td>\n            </tr>\n            <tr>\n                <td>H3</td>\n                <td>### Heading</td>\n                <td>Ctrl + Alt + 3</td>\n            </tr>\n            <tr>\n                <td>H4</td>\n                <td>#### Heading</td>\n                <td>Ctrl + Alt + 4</td>\n            </tr>\n            <tr>\n                <td>H5</td>\n                <td>##### Heading</td>\n                <td>Ctrl + Alt + 5</td>\n            </tr>\n            <tr>\n                <td>H6</td>\n                <td>###### Heading</td>\n                <td>Ctrl + Alt + 6</td>\n            </tr>\n            <tr>\n                <td>Select Word</td>\n                <td></td>\n                <td>Ctrl + Alt + W</td>\n            </tr>\n            <tr>\n                <td>New Paragraph</td>\n                <td></td>\n                <td>Ctrl / Cmd + Enter</td>\n            </tr>\n            <tr>\n                <td>Uppercase</td>\n                <td></td>\n                <td>Ctrl + U</td>\n            </tr>\n            <tr>\n                <td>Lowercase</td>\n                <td></td>\n                <td>Ctrl + Shift + U</td>\n            </tr>\n            <tr>\n                <td>Titlecase</td>\n                <td></td>\n                <td>Ctrl + Alt + Shift + U</td>\n            </tr>\n            <tr>\n                <td>Insert Current Date</td>\n                <td></td>\n                <td>Ctrl + Shift + 1</td>\n            </tr>\n        </tbody>\n    </table>\n    For further Markdown syntax reference: <a href=\"http://daringfireball.net/projects/markdown/syntax\" target=\"_blank\">Markdown Documentation</a>\n</section>\n";
+  return "<section class=\"markdown-help-container\">\n    <table class=\"modal-markdown-help-table\">\n        <thead>\n            <tr>\n                <th>Result</th>\n                <th>Markdown</th>\n                <th>Shortcut</th>\n            </tr>\n        </thead>\n        <tbody>\n            <tr>\n                <td><strong>Bold</strong></td>\n                <td>**text**</td>\n                <td>Ctrl / Cmd + B</td>\n            </tr>\n            <tr>\n                <td><em>Emphasize</em></td>\n                <td>*text*</td>\n                <td>Ctrl / Cmd + I</td>\n            </tr>\n            <tr>\n                <td>Strike-through</td>\n                <td>~~text~~</td>\n                <td>Ctrl + Alt + U</td>\n            </tr>\n            <tr>\n                <td><a href=\"#\">Link</a></td>\n                <td>[title](http://)</td>\n                <td>Ctrl + Shift + L</td>\n            </tr>\n            <tr>\n                <td>Image</td>\n                <td>![alt](http://)</td>\n                <td>Ctrl + Shift + I</td>\n            </tr>\n            <tr>\n                <td>List</td>\n                <td>* item</td>\n                <td>Ctrl + L</td>\n            </tr>\n            <tr>\n                <td>Blockquote</td>\n                <td>> quote</td>\n                <td>Ctrl + Q</td>\n            </tr>\n            <tr>\n                <td>H1</td>\n                <td># Heading</td>\n                <td>Ctrl + Alt + 1</td>\n            </tr>\n            <tr>\n                <td>H2</td>\n                <td>## Heading</td>\n                <td>Ctrl + Alt + 2</td>\n            </tr>\n            <tr>\n                <td>H3</td>\n                <td>### Heading</td>\n                <td>Ctrl + Alt + 3</td>\n            </tr>\n            <tr>\n                <td><code>Inline Code</code></td>\n                <td>`code`</td>\n                <td>Cmd + K / Ctrl + Shift + K</td>\n            </tr>\n        </tbody>\n    </table>\n    For further Markdown syntax reference: <a href=\"http://daringfireball.net/projects/markdown/syntax\" target=\"_blank\">Markdown Documentation</a>\n</section>\n";
   });
 
 this["JST"]["modals/uploadImage"] = Handlebars.template(function (Handlebars,depth0,helpers,partials,data) {
@@ -47780,7 +48021,7 @@ function program7(depth0,data) {
   if (stack1 = helpers.name) { stack1 = stack1.call(depth0, {hash:{},data:data}); }
   else { stack1 = (depth0 && depth0.name); stack1 = typeof stack1 === functionType ? stack1.call(depth0, {hash:{},data:data}) : stack1; }
   buffer += escapeExpression(stack1)
-    + "'s Picture</span></div>\n                <a href=\"#\" class=\"edit-user-image js-modal-image\">Edit Picture</a>\n            </figure>\n\n            <div class=\"form-group\">\n                <label for=\"user-name\" class=\"hidden\">Full Name</label>\n                <input type=\"url\" value=\"";
+    + "'s Picture</span></div>\n                <a href=\"#\" class=\"edit-user-image js-modal-image\">Edit Picture</a>\n            </figure>\n\n            <div class=\"form-group\">\n                <label for=\"user-name\" class=\"hidden\">Full Name</label>\n                <input type=\"text\" value=\"";
   if (stack1 = helpers.name) { stack1 = stack1.call(depth0, {hash:{},data:data}); }
   else { stack1 = (depth0 && depth0.name); stack1 = typeof stack1 === functionType ? stack1.call(depth0, {hash:{},data:data}) : stack1; }
   buffer += escapeExpression(stack1)
@@ -47792,7 +48033,7 @@ function program7(depth0,data) {
   if (stack1 = helpers.location) { stack1 = stack1.call(depth0, {hash:{},data:data}); }
   else { stack1 = (depth0 && depth0.location); stack1 = typeof stack1 === functionType ? stack1.call(depth0, {hash:{},data:data}) : stack1; }
   buffer += escapeExpression(stack1)
-    + "\" id=\"user-location\" />\n                <p>Where in the world do you live?</p>\n            </div>\n\n            <div class=\"form-group\">\n                <label for=\"user-website\">Website</label>\n                <input type=\"text\" value=\"";
+    + "\" id=\"user-location\" />\n                <p>Where in the world do you live?</p>\n            </div>\n\n            <div class=\"form-group\">\n                <label for=\"user-website\">Website</label>\n                <input type=\"url\" value=\"";
   if (stack1 = helpers.website) { stack1 = stack1.call(depth0, {hash:{},data:data}); }
   else { stack1 = (depth0 && depth0.website); stack1 = typeof stack1 === functionType ? stack1.call(depth0, {hash:{},data:data}) : stack1; }
   buffer += escapeExpression(stack1)
@@ -47848,7 +48089,7 @@ helpers = this.merge(helpers, Handlebars.helpers); data = data || {};
     });
 }());
 
-/*global Ghost, _, Backbone */
+/*global Ghost, _, Backbone, JSON */
 (function () {
     'use strict';
 
@@ -47861,6 +48102,10 @@ helpers = this.merge(helpers, Handlebars.helpers); data = data || {};
         blacklist: ['published', 'draft'],
 
         parse: function (resp) {
+
+            if (resp.posts) {
+                resp = resp.posts[0];
+            }
             if (resp.status) {
                 resp.published = resp.status === 'published';
                 resp.draft = resp.status === 'draft';
@@ -47889,6 +48134,15 @@ helpers = this.merge(helpers, Handlebars.helpers); data = data || {};
                 return tag.id === tagToRemove.id || tag.name === tagToRemove.name;
             });
             this.set('tags', tags);
+        },
+        sync: function (method, model, options) {
+            //wrap post in {posts: [{...}]}
+            if (method === 'create' || method === 'update') {
+                options.data = JSON.stringify({posts: [this.attributes]});
+                options.contentType = 'application/json';
+            }
+
+            return Backbone.Model.prototype.sync.apply(this, arguments);
         }
     });
 
@@ -48363,7 +48617,7 @@ helpers = this.merge(helpers, Handlebars.helpers); data = data || {};
         },
         afterRender: function () {
             this.$el.fadeIn(50);
-            $(".modal-background").fadeIn(10, function () {
+            $(".modal-background").show(10, function () {
                 $(this).addClass("in");
             });
             if (this.model.options.confirm) {
@@ -48676,6 +48930,7 @@ helpers = this.merge(helpers, Handlebars.helpers); data = data || {};
         },
 
         toggleFeatured: function (e) {
+            e.preventDefault();
             var self = this,
                 featured = !self.model.get('featured'),
                 featuredEl = $(e.currentTarget),
@@ -48686,6 +48941,7 @@ helpers = this.merge(helpers, Handlebars.helpers); data = data || {};
             }, {
                 success : function () {
                     featuredEl.removeClass("featured unfeatured").addClass(featured ? "featured" : "unfeatured");
+                    Ghost.notifications.clearEverything();
                     Ghost.notifications.addItem({
                         type: 'success',
                         message: "Post successfully marked as " + (featured ? "featured" : "not featured") + ".",
@@ -48886,6 +49142,261 @@ helpers = this.merge(helpers, Handlebars.helpers); data = data || {};
     });
 }());
 
+// The Save / Publish button
+
+/*global $, _, Ghost, shortcut */
+
+(function () {
+    'use strict';
+
+    // The Publish, Queue, Publish Now buttons
+    // ----------------------------------------
+    Ghost.View.EditorActionsWidget = Ghost.View.extend({
+
+        events: {
+            'click [data-set-status]': 'handleStatus',
+            'click .js-publish-button': 'handlePostButton'
+        },
+
+        statusMap: null,
+
+        createStatusMap: {
+            'draft': 'Save Draft',
+            'published': 'Publish Now'
+        },
+
+        updateStatusMap: {
+            'draft': 'Unpublish',
+            'published': 'Update Post'
+        },
+
+        //TODO: This has to be moved to the I18n localization file.
+        //This structure is supposed to be close to the i18n-localization which will be used soon.
+        messageMap: {
+            errors: {
+                post: {
+                    published: {
+                        'published': 'Your post could not be updated.',
+                        'draft': 'Your post could not be saved as a draft.'
+                    },
+                    draft: {
+                        'published': 'Your post could not be published.',
+                        'draft': 'Your post could not be saved as a draft.'
+                    }
+
+                }
+            },
+
+            success: {
+                post: {
+                    published: {
+                        'published': 'Your post has been updated.',
+                        'draft': 'Your post has been saved as a draft.'
+                    },
+                    draft: {
+                        'published': 'Your post has been published.',
+                        'draft': 'Your post has been saved as a draft.'
+                    }
+                }
+            }
+        },
+
+        initialize: function () {
+            var self = this;
+
+            // Toggle publish
+            shortcut.add('Ctrl+Alt+P', function () {
+                self.toggleStatus();
+            });
+            shortcut.add('Ctrl+S', function () {
+                self.updatePost();
+            });
+            shortcut.add('Meta+S', function () {
+                self.updatePost();
+            });
+            this.listenTo(this.model, 'change:status', this.render);
+        },
+
+        toggleStatus: function () {
+            var self = this,
+                keys = Object.keys(this.statusMap),
+                model = self.model,
+                prevStatus = model.get('status'),
+                currentIndex = keys.indexOf(prevStatus),
+                newIndex,
+                status;
+
+            newIndex = currentIndex + 1 > keys.length - 1 ? 0 : currentIndex + 1;
+            status = keys[newIndex];
+
+            this.setActiveStatus(keys[newIndex], this.statusMap[status], prevStatus);
+
+            this.savePost({
+                status: keys[newIndex]
+            }).then(function () {
+                    self.reportSaveSuccess(status, prevStatus);
+                }, function (xhr) {
+                    // Show a notification about the error
+                    self.reportSaveError(xhr, model, status, prevStatus);
+                });
+        },
+
+        setActiveStatus: function (newStatus, displayText, currentStatus) {
+            var isPublishing = (newStatus === 'published' && currentStatus !== 'published'),
+                isUnpublishing = (newStatus === 'draft' && currentStatus === 'published'),
+            // Controls when background of button has the splitbutton-delete/button-delete classes applied
+                isImportantStatus = (isPublishing || isUnpublishing);
+
+            $('.js-publish-splitbutton')
+                .removeClass(isImportantStatus ? 'splitbutton-save' : 'splitbutton-delete')
+                .addClass(isImportantStatus ? 'splitbutton-delete' : 'splitbutton-save');
+
+            // Set the publish button's action and proper coloring
+            $('.js-publish-button')
+                .attr('data-status', newStatus)
+                .text(displayText)
+                .removeClass(isImportantStatus ? 'button-save' : 'button-delete')
+                .addClass(isImportantStatus ? 'button-delete' : 'button-save');
+
+            // Remove the animated popup arrow
+            $('.js-publish-splitbutton > a')
+                .removeClass('active');
+
+            // Set the active action in the popup
+            $('.js-publish-splitbutton .editor-options li')
+                .removeClass('active')
+                .filter(['li[data-set-status="', newStatus, '"]'].join(''))
+                .addClass('active');
+        },
+
+        handleStatus: function (e) {
+            if (e) { e.preventDefault(); }
+            var status = $(e.currentTarget).attr('data-set-status'),
+                currentStatus = this.model.get('status');
+
+            this.setActiveStatus(status, this.statusMap[status], currentStatus);
+
+            // Dismiss the popup menu
+            $('body').find('.overlay:visible').fadeOut();
+        },
+
+        handlePostButton: function (e) {
+            if (e) { e.preventDefault(); }
+            var status = $(e.currentTarget).attr('data-status');
+
+            this.updatePost(status);
+        },
+
+        updatePost: function (status) {
+            var self = this,
+                model = this.model,
+                prevStatus = model.get('status');
+
+            // Default to same status if not passed in
+            status = status || prevStatus;
+
+            model.trigger('willSave');
+
+            this.savePost({
+                status: status
+            }).then(function () {
+                    self.reportSaveSuccess(status, prevStatus);
+                    // Refresh publish button and all relevant controls with updated status.
+                    self.render();
+                }, function (xhr) {
+                    // Set the model status back to previous
+                    model.set({ status: prevStatus });
+                    // Set appropriate button status
+                    self.setActiveStatus(status, self.statusMap[status], prevStatus);
+                    // Show a notification about the error
+                    self.reportSaveError(xhr, model, status, prevStatus);
+                });
+        },
+
+        savePost: function (data) {
+            var publishButton = $('.js-publish-button'),
+                saved,
+                enablePublish = function (deferred) {
+                    deferred.always(function () {
+                        publishButton.prop('disabled', false);
+                    });
+                    return deferred;
+                };
+
+            publishButton.prop('disabled', true);
+
+            _.each(this.model.blacklist, function (item) {
+                this.model.unset(item);
+            }, this);
+
+            saved = this.model.save(_.extend({
+                title: this.options.$title.val(),
+                markdown: this.options.editor.value()
+            }, data));
+
+            // TODO: Take this out if #2489 gets merged in Backbone. Or patch Backbone
+            // ourselves for more consistent promises.
+            if (saved) {
+                return enablePublish(saved);
+            }
+
+            return enablePublish($.Deferred().reject());
+        },
+
+        reportSaveSuccess: function (status, prevStatus) {
+            Ghost.notifications.clearEverything();
+            Ghost.notifications.addItem({
+                type: 'success',
+                message: this.messageMap.success.post[prevStatus][status],
+                status: 'passive'
+            });
+            this.options.editor.setDirty(false);
+        },
+
+        reportSaveError: function (response, model, status, prevStatus) {
+            var message = this.messageMap.errors.post[prevStatus][status];
+
+            if (response) {
+                // Get message from response
+                message += ' ' + Ghost.Views.Utils.getRequestErrorMessage(response);
+            } else if (model.validationError) {
+                // Grab a validation error
+                message += ' ' + model.validationError;
+            }
+
+            Ghost.notifications.clearEverything();
+            Ghost.notifications.addItem({
+                type: 'error',
+                message: message,
+                status: 'passive'
+            });
+        },
+
+        setStatusLabels: function (statusMap) {
+            _.each(statusMap, function (label, status) {
+                $('li[data-set-status="' + status + '"] > a').text(label);
+            });
+        },
+
+        render: function () {
+            var status = this.model.get('status');
+
+            // Assume that we're creating a new post
+            if (status !== 'published') {
+                this.statusMap = this.createStatusMap;
+            } else {
+                this.statusMap = this.updateStatusMap;
+            }
+
+            // Populate the publish menu with the appropriate verbiage
+            this.setStatusLabels(this.statusMap);
+
+            // Default the selected publish option to the current status of the post.
+            this.setActiveStatus(status, this.statusMap[status], status);
+        }
+
+    });
+}());
 // The Tag UI area associated with a post
 
 /*global window, document, setTimeout, $, _, Ghost */
@@ -48933,7 +49444,7 @@ helpers = this.merge(helpers, Handlebars.helpers); data = data || {};
 
             if (tags) {
                 _.forEach(tags, function (tag) {
-                    var $tag = $('<span class="tag" data-tag-id="' + tag.id + '">' + tag.name + '</span>');
+                    var $tag = $('<span class="tag" data-tag-id="' + tag.id + '">' + _.escape(tag.name) + '</span>');
                     $tags.append($tag);
                     $("[data-tag-id=" + tag.id + "]")[0].scrollIntoView(true);
                 });
@@ -48994,8 +49505,11 @@ helpers = this.merge(helpers, Handlebars.helpers); data = data || {};
                 styles = {
                     left: $target.position().left
                 },
-                maxSuggestions = 5, // Limit the suggestions number
-                regexTerm = searchTerm.replace(/(\s+)/g, "(<[^>]+>)*$1(<[^>]+>)*"),
+                // Limit the suggestions number
+                maxSuggestions = 5,
+                // Escape regex special characters
+                escapedTerm = searchTerm.replace(/[\-\/\\\^$*+?.()|\[\]{}]/g, '\\$&'),
+                regexTerm = escapedTerm.replace(/(\s+)/g, "(<[^>]+>)*$1(<[^>]+>)*"),
                 regexPattern = new RegExp("(" + regexTerm + ")", "i");
 
             this.$suggestions.css(styles);
@@ -49009,10 +49523,14 @@ helpers = this.merge(helpers, Handlebars.helpers); data = data || {};
                 var highlightedName,
                     suggestionHTML;
 
-                highlightedName = matchingTag.name.replace(regexPattern, "<mark>$1</mark>");
+                highlightedName = matchingTag.name.replace(regexPattern, function (match, p1) {
+                    return "<mark>" + _.escape(p1) + "</mark>";
+                });
                 /*jslint regexp: true */ // - would like to remove this
-                highlightedName = highlightedName.replace(/(<mark>[^<>]*)((<[^>]+>)+)([^<>]*<\/mark>)/, "$1</mark>$2<mark>$4");
-
+                highlightedName = highlightedName.replace(/(<mark>[^<>]*)((<[^>]+>)+)([^<>]*<\/mark>)/, function (match, p1, p2, p3, p4) {
+                    return _.escape(p1) + '</mark>' + _.escape(p2) + '<mark>' + _.escape(p4);
+                });
+                
                 suggestionHTML = "<li data-tag-id='" + matchingTag.id + "' data-tag-name='" + _.escape(matchingTag.name) + "'><a href='#'>" + highlightedName + "</a></li>";
                 this.$suggestions.append(suggestionHTML);
             }, this);
@@ -49073,7 +49591,8 @@ helpers = this.merge(helpers, Handlebars.helpers); data = data || {};
                 searchTerm = $.trim($target.val()),
                 tag,
                 $selectedSuggestion,
-                isComma = ",".localeCompare(String.fromCharCode(e.keyCode || e.charCode)) === 0;
+                isComma = ",".localeCompare(String.fromCharCode(e.keyCode || e.charCode)) === 0,
+                hasAlreadyBeenAdded;
 
             // use localeCompare in case of international keyboard layout
             if ((e.keyCode === this.keys.ENTER || isComma) && searchTerm) {
@@ -49082,16 +49601,19 @@ helpers = this.merge(helpers, Handlebars.helpers); data = data || {};
 
                 $selectedSuggestion = this.$suggestions.children(".selected");
                 if (this.$suggestions.is(":visible") && $selectedSuggestion.length !== 0) {
-
-                    if ($('.tag:containsExact("' + _.unescape($selectedSuggestion.data('tag-name')) + '")').length === 0) {
-                        tag = {id: $selectedSuggestion.data('tag-id'), name: _.unescape($selectedSuggestion.data('tag-name'))};
+                    tag = {id: $selectedSuggestion.data('tag-id'), name: _.unescape($selectedSuggestion.data('tag-name'))};
+                    hasAlreadyBeenAdded = this.hasTagBeenAdded(tag.name);
+                    if (!hasAlreadyBeenAdded) {
                         this.addTag(tag);
                     }
                 } else {
                     if (isComma) {
+                        // Remove comma from string if comma is used to submit.
                         searchTerm = searchTerm.replace(/,/g, "");
-                    }  // Remove comma from string if comma is used to submit.
-                    if ($('.tag:containsExact("' + searchTerm + '")').length === 0) {
+                    }
+
+                    hasAlreadyBeenAdded = this.hasTagBeenAdded(searchTerm);
+                    if (!hasAlreadyBeenAdded) {
                         this.addTag({id: null, name: searchTerm});
                     }
                 }
@@ -49104,13 +49626,9 @@ helpers = this.merge(helpers, Handlebars.helpers); data = data || {};
         completeCurrentTag: function () {
             var $target = this.$('.tag-input'),
                 tagName = $target.val(),
-                usedTagNames,
                 hasAlreadyBeenAdded;
 
-            usedTagNames = _.map(this.model.get('tags'), function (tag) {
-                return tag.name.toUpperCase();
-            });
-            hasAlreadyBeenAdded = usedTagNames.indexOf(tagName.toUpperCase()) !== -1;
+            hasAlreadyBeenAdded = this.hasTagBeenAdded(tagName);
 
             if (tagName.length > 0 && !hasAlreadyBeenAdded) {
                 this.addTag({id: null, name: tagName});
@@ -49155,9 +49673,8 @@ helpers = this.merge(helpers, Handlebars.helpers); data = data || {};
 
                 tagNameMatches = tag.name.toUpperCase().indexOf(searchTerm) !== -1;
 
-                hasAlreadyBeenAdded = _.some(self.model.get('tags'), function (usedTag) {
-                    return tag.name.toUpperCase() === usedTag.name.toUpperCase();
-                });
+                hasAlreadyBeenAdded = self.hasTagBeenAdded(tag.name);
+
                 return tagNameMatches && !hasAlreadyBeenAdded;
             });
 
@@ -49165,7 +49682,7 @@ helpers = this.merge(helpers, Handlebars.helpers); data = data || {};
         },
 
         addTag: function (tag) {
-            var $tag = $('<span class="tag" data-tag-id="' + tag.id + '">' + tag.name + '</span>');
+            var $tag = $('<span class="tag" data-tag-id="' + tag.id + '">' + _.escape(tag.name) + '</span>');
             this.$('.tags').append($tag);
             $(".tag").last()[0].scrollIntoView(true);
             window.scrollTo(0, 1);
@@ -49173,6 +49690,12 @@ helpers = this.merge(helpers, Handlebars.helpers); data = data || {};
 
             this.$('.tag-input').val('').focus();
             this.$suggestions.hide();
+        },
+
+        hasTagBeenAdded: function (tagName) {
+            return _.some(this.model.get('tags'), function (usedTag) {
+                return tagName.toUpperCase() === usedTag.name.toUpperCase();
+            });
         }
     });
 
@@ -49180,46 +49703,11 @@ helpers = this.merge(helpers, Handlebars.helpers); data = data || {};
 
 // # Article Editor
 
-/*global window, document, setTimeout, navigator, $, _, Backbone, Ghost, Showdown, CodeMirror, shortcut, Countable */
+/*global document, setTimeout, navigator, $, Backbone, Ghost, shortcut */
 (function () {
-    "use strict";
+    'use strict';
 
-    /*jslint regexp: true, bitwise: true */
-    var PublishBar,
-        ActionsWidget,
-        UploadManager,
-        MarkerManager,
-        MarkdownShortcuts = [
-            {'key': 'Ctrl+B', 'style': 'bold'},
-            {'key': 'Meta+B', 'style': 'bold'},
-            {'key': 'Ctrl+I', 'style': 'italic'},
-            {'key': 'Meta+I', 'style': 'italic'},
-            {'key': 'Ctrl+Alt+U', 'style': 'strike'},
-            {'key': 'Ctrl+Shift+K', 'style': 'code'},
-            {'key': 'Meta+K', 'style': 'code'},
-            {'key': 'Ctrl+Alt+1', 'style': 'h1'},
-            {'key': 'Ctrl+Alt+2', 'style': 'h2'},
-            {'key': 'Ctrl+Alt+3', 'style': 'h3'},
-            {'key': 'Ctrl+Alt+4', 'style': 'h4'},
-            {'key': 'Ctrl+Alt+5', 'style': 'h5'},
-            {'key': 'Ctrl+Alt+6', 'style': 'h6'},
-            {'key': 'Ctrl+Shift+L', 'style': 'link'},
-            {'key': 'Ctrl+Shift+I', 'style': 'image'},
-            {'key': 'Ctrl+Q', 'style': 'blockquote'},
-            {'key': 'Ctrl+Shift+1', 'style': 'currentDate'},
-            {'key': 'Ctrl+U', 'style': 'uppercase'},
-            {'key': 'Ctrl+Shift+U', 'style': 'lowercase'},
-            {'key': 'Ctrl+Alt+Shift+U', 'style': 'titlecase'},
-            {'key': 'Ctrl+Alt+W', 'style': 'selectword'},
-            {'key': 'Ctrl+L', 'style': 'list'},
-            {'key': 'Ctrl+Alt+C', 'style': 'copyHTML'},
-            {'key': 'Meta+Alt+C', 'style': 'copyHTML'},
-            {'key': 'Meta+Enter', 'style': 'newLine'},
-            {'key': 'Ctrl+Enter', 'style': 'newLine'}
-        ],
-        imageMarkdownRegex = /^(?:\{<(.*?)>\})?!(?:\[([^\n\]]*)\])(?:\(([^\n\]]*)\))?$/gim,
-        markerRegex = /\{<([\w\W]*?)>\}/;
-    /*jslint regexp: false, bitwise: false */
+    var PublishBar;
 
     // The publish bar associated with a post, which has the TagWidget and
     // Save button and options and such.
@@ -49227,318 +49715,34 @@ helpers = this.merge(helpers, Handlebars.helpers); data = data || {};
     PublishBar = Ghost.View.extend({
 
         initialize: function () {
-            this.addSubview(new Ghost.View.EditorTagWidget({el: this.$('#entry-tags'), model: this.model})).render();
-            this.addSubview(new ActionsWidget({el: this.$('#entry-actions'), model: this.model})).render();
-            this.addSubview(new Ghost.View.PostSettings({el: $('#entry-controls'), model: this.model})).render();
+
+            this.addSubview(new Ghost.View.EditorTagWidget(
+                {el: this.$('#entry-tags'), model: this.model}
+            )).render();
+            this.addSubview(new Ghost.View.PostSettings(
+                {el: $('#entry-controls'), model: this.model}
+            )).render();
+
+            // Pass the Actions widget references to the title and editor so that it can get
+            // the values that need to be saved
+            this.addSubview(new Ghost.View.EditorActionsWidget(
+                {
+                    el: this.$('#entry-actions'),
+                    model: this.model,
+                    $title: this.options.$title,
+                    editor: this.options.editor
+                }
+            )).render();
+
         },
 
         render: function () { return this; }
-
     });
 
-    // The Publish, Queue, Publish Now buttons
-    // ----------------------------------------
-    ActionsWidget = Ghost.View.extend({
-
-        events: {
-            'click [data-set-status]': 'handleStatus',
-            'click .js-publish-button': 'handlePostButton'
-        },
-
-        statusMap: null,
-
-        createStatusMap: {
-            'draft': 'Save Draft',
-            'published': 'Publish Now'
-        },
-
-        updateStatusMap: {
-            'draft': 'Unpublish',
-            'published': 'Update Post'
-        },
-
-        //TODO: This has to be moved to the I18n localization file.
-        //This structure is supposed to be close to the i18n-localization which will be used soon.
-        messageMap: {
-            errors: {
-                post: {
-                    published: {
-                        'published': 'Your post could not be updated.',
-                        'draft': 'Your post could not be saved as a draft.'
-                    },
-                    draft: {
-                        'published': 'Your post could not be published.',
-                        'draft': 'Your post could not be saved as a draft.'
-                    }
-
-                }
-            },
-
-            success: {
-                post: {
-                    published: {
-                        'published': 'Your post has been updated.',
-                        'draft': 'Your post has been saved as a draft.'
-                    },
-                    draft: {
-                        'published': 'Your post has been published.',
-                        'draft': 'Your post has been saved as a draft.'
-                    }
-                }
-            }
-        },
-
-        initialize: function () {
-            var self = this;
-            // Toggle publish
-            shortcut.add("Ctrl+Alt+P", function () {
-                self.toggleStatus();
-            });
-            shortcut.add("Ctrl+S", function () {
-                self.updatePost();
-            });
-            shortcut.add("Meta+S", function () {
-                self.updatePost();
-            });
-            this.listenTo(this.model, 'change:status', this.render);
-        },
-
-        toggleStatus: function () {
-            var self = this,
-                keys = Object.keys(this.statusMap),
-                model = self.model,
-                prevStatus = model.get('status'),
-                currentIndex = keys.indexOf(prevStatus),
-                newIndex,
-                status;
-
-            newIndex = currentIndex + 1 > keys.length - 1 ? 0 : currentIndex + 1;
-            status = keys[newIndex];
-
-            this.setActiveStatus(keys[newIndex], this.statusMap[status], prevStatus);
-
-            this.savePost({
-                status: keys[newIndex]
-            }).then(function () {
-                self.reportSaveSuccess(status, prevStatus);
-            }, function (xhr) {
-                // Show a notification about the error
-                self.reportSaveError(xhr, model, status, prevStatus);
-            });
-        },
-
-        setActiveStatus: function (newStatus, displayText, currentStatus) {
-            var isPublishing = (newStatus === 'published' && currentStatus !== 'published'),
-                isUnpublishing = (newStatus === 'draft' && currentStatus === 'published'),
-                // Controls when background of button has the splitbutton-delete/button-delete classes applied
-                isImportantStatus = (isPublishing || isUnpublishing);
-
-            $('.js-publish-splitbutton')
-                .removeClass(isImportantStatus ? 'splitbutton-save' : 'splitbutton-delete')
-                .addClass(isImportantStatus ? 'splitbutton-delete' : 'splitbutton-save');
-
-            // Set the publish button's action and proper coloring
-            $('.js-publish-button')
-                .attr('data-status', newStatus)
-                .text(displayText)
-                .removeClass(isImportantStatus ? 'button-save' : 'button-delete')
-                .addClass(isImportantStatus ? 'button-delete' : 'button-save');
-
-            // Remove the animated popup arrow
-            $('.js-publish-splitbutton > a')
-                .removeClass('active');
-
-            // Set the active action in the popup
-            $('.js-publish-splitbutton .editor-options li')
-                .removeClass('active')
-                .filter(['li[data-set-status="', newStatus, '"]'].join(''))
-                    .addClass('active');
-        },
-
-        handleStatus: function (e) {
-            if (e) { e.preventDefault(); }
-            var status = $(e.currentTarget).attr('data-set-status'),
-                currentStatus = this.model.get('status');
-
-            this.setActiveStatus(status, this.statusMap[status], currentStatus);
-
-            // Dismiss the popup menu
-            $('body').find('.overlay:visible').fadeOut();
-        },
-
-        handlePostButton: function (e) {
-            if (e) { e.preventDefault(); }
-            var status = $(e.currentTarget).attr('data-status');
-
-            this.updatePost(status);
-        },
-
-        updatePost: function (status) {
-            var self = this,
-                model = this.model,
-                prevStatus = model.get('status');
-
-            // Default to same status if not passed in
-            status = status || prevStatus;
-
-            model.trigger('willSave');
-
-            this.savePost({
-                status: status
-            }).then(function () {
-                self.reportSaveSuccess(status, prevStatus);
-                // Refresh publish button and all relevant controls with updated status.
-                self.render();
-            }, function (xhr) {
-                // Set the model status back to previous
-                model.set({ status: prevStatus });
-                // Set appropriate button status
-                self.setActiveStatus(status, self.statusMap[status], prevStatus);
-                // Show a notification about the error
-                self.reportSaveError(xhr, model, status, prevStatus);
-            });
-        },
-
-        savePost: function (data) {
-            var publishButton = $('.js-publish-button'),
-                saved,
-                enablePublish = function (deferred) {
-                    deferred.always(function () {
-                        publishButton.prop('disabled', false);
-                    });
-                    return deferred;
-                };
-
-            publishButton.prop('disabled', true);
-
-            _.each(this.model.blacklist, function (item) {
-                this.model.unset(item);
-            }, this);
-
-            saved = this.model.save(_.extend({
-                title: $('#entry-title').val(),
-                markdown: Ghost.currentView.getEditorValue()
-            }, data));
-
-            // TODO: Take this out if #2489 gets merged in Backbone. Or patch Backbone
-            // ourselves for more consistent promises.
-            if (saved) {
-                return enablePublish(saved);
-            }
-
-            return enablePublish($.Deferred().reject());
-        },
-
-        reportSaveSuccess: function (status, prevStatus) {
-            Ghost.notifications.clearEverything();
-            Ghost.notifications.addItem({
-                type: 'success',
-                message: this.messageMap.success.post[prevStatus][status],
-                status: 'passive'
-            });
-            Ghost.currentView.setEditorDirty(false);
-        },
-
-        reportSaveError: function (response, model, status, prevStatus) {
-            var message = this.messageMap.errors.post[prevStatus][status];
-
-            if (response) {
-                // Get message from response
-                message += " " + Ghost.Views.Utils.getRequestErrorMessage(response);
-            } else if (model.validationError) {
-                // Grab a validation error
-                message += " " + model.validationError;
-            }
-
-            Ghost.notifications.clearEverything();
-            Ghost.notifications.addItem({
-                type: 'error',
-                message: message,
-                status: 'passive'
-            });
-        },
-
-        setStatusLabels: function (statusMap) {
-            _.each(statusMap, function (label, status) {
-                $('li[data-set-status="' + status + '"] > a').text(label);
-            });
-        },
-
-        render: function () {
-            var status = this.model.get('status');
-
-            // Assume that we're creating a new post
-            if (status !== 'published') {
-                this.statusMap = this.createStatusMap;
-            } else {
-                this.statusMap = this.updateStatusMap;
-            }
-
-            // Populate the publish menu with the appropriate verbiage
-            this.setStatusLabels(this.statusMap);
-
-            // Default the selected publish option to the current status of the post.
-            this.setActiveStatus(status, this.statusMap[status], status);
-        }
-
-    });
 
     // The entire /editor page's route
     // ----------------------------------------
     Ghost.Views.Editor = Ghost.View.extend({
-
-        initialize: function () {
-            var self = this;
-
-            // Add the container view for the Publish Bar
-            this.addSubview(new PublishBar({el: "#publish-bar", model: this.model})).render();
-
-            this.$('#entry-title').val(this.model.get('title')).focus();
-            this.$('#entry-markdown').text(this.model.get('markdown'));
-
-            this.listenTo(this.model, 'change:title', this.renderTitle);
-            this.listenTo(this.model, 'change:id', function (m) {
-                // This is a special case for browsers which fire an unload event when using navigate. The id change
-                // happens before the save success and can cause the unload alert to appear incorrectly on first save
-                // The id only changes in the event that the save has been successful, so this workaround is safes
-                self.setEditorDirty(false);
-                Backbone.history.navigate('/editor/' + m.id + '/');
-            });
-
-            this.initMarkdown();
-            this.renderPreview();
-
-            $('.entry-content header, .entry-preview header').on('click', function () {
-                $('.entry-content, .entry-preview').removeClass('active');
-                $(this).closest('section').addClass('active');
-            });
-
-            $('.entry-title .icon-fullscreen').on('click', function (e) {
-                e.preventDefault();
-                $('body').toggleClass('fullscreen');
-            });
-
-            this.$('.CodeMirror-scroll').on('scroll', this.syncScroll);
-
-            this.$('.CodeMirror-scroll').scrollClass({target: '.entry-markdown', offset: 10});
-            this.$('.entry-preview-content').scrollClass({target: '.entry-preview', offset: 10});
-
-
-            // Zen writing mode shortcut
-            shortcut.add("Alt+Shift+Z", function () {
-                $('body').toggleClass('zen');
-            });
-
-            $('.entry-markdown header, .entry-preview header').click(function (e) {
-                $('.entry-markdown, .entry-preview').removeClass('active');
-                $(e.target).closest('section').addClass('active');
-            });
-
-            // Deactivate default drag/drop action
-            $(document).bind('drop dragover', function (e) {
-                e.preventDefault();
-            });
-        },
 
         events: {
             'click .markdown-help': 'showHelp',
@@ -49546,46 +49750,53 @@ helpers = this.merge(helpers, Handlebars.helpers); data = data || {};
             'orientationchange': 'orientationChange'
         },
 
-        syncScroll: _.throttle(function (e) {
-            var $codeViewport = $(e.target),
-                $previewViewport = $('.entry-preview-content'),
-                $codeContent = $('.CodeMirror-sizer'),
-                $previewContent = $('.rendered-markdown'),
+        initialize: function () {
+            this.$title = this.$('#entry-title');
+            this.$editor = this.$('#entry-markdown');
 
-                // calc position
-                codeHeight = $codeContent.height() - $codeViewport.height(),
-                previewHeight = $previewContent.height() - $previewViewport.height(),
-                ratio = previewHeight / codeHeight,
-                previewPostition = $codeViewport.scrollTop() * ratio;
+            this.$title.val(this.model.get('title')).focus();
+            this.$editor.text(this.model.get('markdown'));
 
-            // apply new scroll
-            $previewViewport.scrollTop(previewPostition);
-        }, 10),
+            // Create a new editor
+            this.editor = new Ghost.Editor.Main();
 
-        showHelp: function () {
-            this.addSubview(new Ghost.Views.Modal({
-                model: {
-                    options: {
-                        close: true,
-                        type: "info",
-                        style: ["wide"],
-                        animation: 'fade'
-                    },
-                    content: {
-                        template: 'markdown',
-                        title: 'Markdown Help'
-                    }
-                }
-            }));
+            // Add the container view for the Publish Bar
+            // Passing reference to the title and editor
+            this.addSubview(new PublishBar(
+                {el: '#publish-bar', model: this.model, $title: this.$title, editor: this.editor}
+            )).render();
+
+            this.listenTo(this.model, 'change:title', this.renderTitle);
+            this.listenTo(this.model, 'change:id', this.handleIdChange);
+
+            this.bindShortcuts();
+
+            $('.entry-markdown header, .entry-preview header').on('click', function (e) {
+                $('.entry-markdown, .entry-preview').removeClass('active');
+                $(e.currentTarget).closest('section').addClass('active');
+            });
+        },
+
+        bindShortcuts: function () {
+            var self = this;
+
+             // Zen writing mode shortcut - full editor view
+            shortcut.add('Alt+Shift+Z', function () {
+                $('body').toggleClass('zen');
+            });
+
+            // HTML copy & paste
+            shortcut.add('Ctrl+Alt+C', function () {
+                self.showHTML();
+            });
         },
 
         trimTitle: function () {
-            var $title = $('#entry-title'),
-                rawTitle = $title.val(),
+            var rawTitle = this.$title.val(),
                 trimmedTitle = $.trim(rawTitle);
 
             if (rawTitle !== trimmedTitle) {
-                $title.val(trimmedTitle);
+                this.$title.val(trimmedTitle);
             }
 
             // Trigger title change for post-settings.js
@@ -49593,7 +49804,15 @@ helpers = this.merge(helpers, Handlebars.helpers); data = data || {};
         },
 
         renderTitle: function () {
-            this.$('#entry-title').val(this.model.get('title'));
+            this.$title.val(this.model.get('title'));
+        },
+
+        handleIdChange: function (m) {
+            // This is a special case for browsers which fire an unload event when using navigate. The id change
+            // happens before the save success and can cause the unload alert to appear incorrectly on first save
+            // The id only changes in the event that the save has been successful, so this workaround is safes
+            this.editor.setDirty(false);
+            Backbone.history.navigate('/editor/' + m.id + '/');
         },
 
         // This is a hack to remove iOS6 white space on orientation change bug
@@ -49608,312 +49827,38 @@ helpers = this.merge(helpers, Handlebars.helpers); data = data || {};
             }
         },
 
-        // This updates the editor preview panel.
-        // Currently gets called on every key press.
-        // Also trigger word count update
-        renderPreview: function () {
-            var self = this,
-                preview = document.getElementsByClassName('rendered-markdown')[0];
-            preview.innerHTML = this.converter.makeHtml(this.editor.getValue());
-
-            this.initUploads();
-
-            Countable.once(preview, function (counter) {
-                self.$('.entry-word-count').text($.pluralize(counter.words, 'word'));
-                self.$('.entry-character-count').text($.pluralize(counter.characters, 'character'));
-                self.$('.entry-paragraph-count').text($.pluralize(counter.paragraphs, 'paragraph'));
-            });
-        },
-
-        // Markdown converter & markdown shortcut initialization.
-        initMarkdown: function () {
-            var self = this;
-
-            this.converter = new Showdown.converter({extensions: ['typography', 'ghostdown', 'github']});
-            this.editor = CodeMirror.fromTextArea(document.getElementById('entry-markdown'), {
-                mode: 'gfm',
-                tabMode: 'indent',
-                tabindex: "2",
-                lineWrapping: true,
-                dragDrop: false,
-                extraKeys: {
-                    Home: "goLineLeft",
-                    End: "goLineRight"
-                }
-            });
-            this.uploadMgr = new UploadManager(this.editor);
-
-            // Inject modal for HTML to be viewed in
-            shortcut.add("Ctrl+Alt+C", function () {
-                self.showHTML();
-            });
-            shortcut.add("Ctrl+Alt+C", function () {
-                self.showHTML();
-            });
-
-            _.each(MarkdownShortcuts, function (combo) {
-                shortcut.add(combo.key, function () {
-                    return self.editor.addMarkdown({style: combo.style});
-                });
-            });
-
-            this.enableEditor();
-        },
-
-        options: {
-            markers: {}
-        },
-
-        getEditorValue: function () {
-            return this.uploadMgr.getEditorValue();
-        },
-
-        unloadDirtyMessage: function () {
-            return "==============================\n\n" +
-                "Hey there! It looks like you're in the middle of writing" +
-                " something and you haven't saved all of your content." +
-                "\n\nSave before you go!\n\n" +
-                "==============================";
-        },
-
-        setEditorDirty: function (dirty) {
-            window.onbeforeunload = dirty ? this.unloadDirtyMessage : null;
-        },
-
-        initUploads: function () {
-            var filestorage = $('#entry-markdown-content').data('filestorage');
-            this.$('.js-drop-zone').upload({editor: true, fileStorage: filestorage});
-            this.$('.js-drop-zone').on('uploadstart', $.proxy(this.disableEditor, this));
-            this.$('.js-drop-zone').on('uploadfailure', $.proxy(this.enableEditor, this));
-            this.$('.js-drop-zone').on('uploadsuccess', $.proxy(this.enableEditor, this));
-            this.$('.js-drop-zone').on('uploadsuccess', this.uploadMgr.handleUpload);
-        },
-
-        enableEditor: function () {
-            var self = this;
-            this.editor.setOption("readOnly", false);
-            this.editor.on('change', function () {
-                self.setEditorDirty(true);
-                self.renderPreview();
-            });
-        },
-
-        disableEditor: function () {
-            var self = this;
-            this.editor.setOption("readOnly", "nocursor");
-            this.editor.off('change', function () {
-                self.renderPreview();
-            });
-        },
-
-        showHTML: function () {
+        showEditorModal: function (content) {
             this.addSubview(new Ghost.Views.Modal({
                 model: {
                     options: {
                         close: true,
-                        type: "info",
-                        style: ["wide"],
+                        style: ['wide'],
                         animation: 'fade'
                     },
-                    content: {
-                        template: 'copyToHTML',
-                        title: 'Copied HTML'
-                    }
+                    content: content
                 }
             }));
         },
 
+        showHelp: function () {
+            var content = {
+                template: 'markdown',
+                title: 'Markdown Help'
+            };
+            this.showEditorModal(content);
+        },
+
+        showHTML: function () {
+            var content = {
+                template: 'copyToHTML',
+                title: 'Copied HTML'
+            };
+            this.showEditorModal(content);
+        },
+
         render: function () { return this; }
     });
-
-    MarkerManager = function (editor) {
-        var markers = {},
-            uploadPrefix = 'image_upload',
-            uploadId = 1;
-
-        function addMarker(line, ln) {
-            var marker,
-                magicId = '{<' + uploadId + '>}';
-            editor.setLine(ln, magicId + line.text);
-            marker = editor.markText(
-                {line: ln, ch: 0},
-                {line: ln, ch: (magicId.length)},
-                {collapsed: true}
-            );
-
-            markers[uploadPrefix + '_' + uploadId] = marker;
-            uploadId += 1;
-        }
-
-        function getMarkerRegexForId(id) {
-            id = id.replace('image_upload_', '');
-            return new RegExp('\\{<' + id + '>\\}', 'gmi');
-        }
-
-        function stripMarkerFromLine(line) {
-            var markerText = line.text.match(markerRegex),
-                ln = editor.getLineNumber(line);
-
-            if (markerText) {
-                editor.replaceRange('', {line: ln, ch: markerText.index}, {line: ln, ch: markerText.index + markerText[0].length});
-            }
-        }
-
-        function findAndStripMarker(id) {
-            editor.eachLine(function (line) {
-                var markerText = getMarkerRegexForId(id).exec(line.text),
-                    ln;
-
-                if (markerText) {
-                    ln = editor.getLineNumber(line);
-                    editor.replaceRange('', {line: ln, ch: markerText.index}, {line: ln, ch: markerText.index + markerText[0].length});
-                }
-            });
-        }
-
-        function removeMarker(id, marker, line) {
-            delete markers[id];
-            marker.clear();
-
-            if (line) {
-                stripMarkerFromLine(line);
-            } else {
-                findAndStripMarker(id);
-            }
-        }
-
-        function checkMarkers() {
-            _.each(markers, function (marker, id) {
-                var line;
-                marker = markers[id];
-                if (marker.find()) {
-                    line = editor.getLineHandle(marker.find().from.line);
-                    if (!line.text.match(imageMarkdownRegex)) {
-                        removeMarker(id, marker, line);
-                    }
-                } else {
-                    removeMarker(id, marker);
-                }
-            });
-        }
-
-        function initMarkers(line) {
-            var isImage = line.text.match(imageMarkdownRegex),
-                hasMarker = line.text.match(markerRegex);
-
-            if (isImage && !hasMarker) {
-                addMarker(line, editor.getLineNumber(line));
-            }
-        }
-
-        // public api
-        _.extend(this, {
-            markers: markers,
-            checkMarkers: checkMarkers,
-            addMarker: addMarker,
-            stripMarkerFromLine: stripMarkerFromLine,
-            getMarkerRegexForId: getMarkerRegexForId
-        });
-
-        // Initialise
-        editor.eachLine(initMarkers);
-    };
-
-    UploadManager = function (editor) {
-        var markerMgr = new MarkerManager(editor);
-
-        function findLine(result_id) {
-            // try to find the right line to replace
-            if (markerMgr.markers.hasOwnProperty(result_id) && markerMgr.markers[result_id].find()) {
-                return editor.getLineHandle(markerMgr.markers[result_id].find().from.line);
-            }
-
-            return false;
-        }
-
-        function checkLine(ln, mode) {
-            var line = editor.getLineHandle(ln),
-                isImage = line.text.match(imageMarkdownRegex),
-                hasMarker;
-
-            // We care if it is an image
-            if (isImage) {
-                hasMarker = line.text.match(markerRegex);
-
-                if (hasMarker && mode === 'paste') {
-                    // this could be a duplicate, and won't be a real marker
-                    markerMgr.stripMarkerFromLine(line);
-                }
-
-                if (!hasMarker) {
-                    markerMgr.addMarker(line, ln);
-                }
-            }
-            // TODO: hasMarker but no image?
-        }
-
-        function handleUpload(e, result_src) {
-            /*jslint regexp: true, bitwise: true */
-            var line = findLine($(e.currentTarget).attr('id')),
-                lineNumber = editor.getLineNumber(line),
-                match = line.text.match(/\([^\n]*\)?/),
-                replacement = '(http://)';
-            /*jslint regexp: false, bitwise: false */
-
-            if (match) {
-                // simple case, we have the parenthesis
-                editor.setSelection({line: lineNumber, ch: match.index + 1}, {line: lineNumber, ch: match.index + match[0].length - 1});
-            } else {
-                match = line.text.match(/\]/);
-                if (match) {
-                    editor.replaceRange(
-                        replacement,
-                        {line: lineNumber, ch: match.index + 1},
-                        {line: lineNumber, ch: match.index + 1}
-                    );
-                    editor.setSelection(
-                        {line: lineNumber, ch: match.index + 2},
-                        {line: lineNumber, ch: match.index + replacement.length }
-                    );
-                }
-            }
-            editor.replaceSelection(result_src);
-        }
-
-        function getEditorValue() {
-            var value = editor.getValue();
-
-            _.each(markerMgr.markers, function (marker, id) {
-                /*jshint unused:false*/
-                value = value.replace(markerMgr.getMarkerRegexForId(id), '');
-            });
-
-            return value;
-        }
-
-
-        // Public API
-        _.extend(this, {
-            getEditorValue: getEditorValue,
-            handleUpload: handleUpload
-        });
-
-        // initialise
-        editor.on('change', function (cm, changeObj) {
-            /*jshint unused:false*/
-            var linesChanged = _.range(changeObj.from.line, changeObj.from.line + changeObj.text.length);
-
-            _.each(linesChanged, function (ln) {
-                checkLine(ln, changeObj.origin);
-            });
-
-            // Is this a line which may have had a marker on it?
-            markerMgr.checkMarkers();
-        });
-    };
-
 }());
-
 /*global window, Ghost, $, validator */
 (function () {
     "use strict";
@@ -50010,7 +49955,8 @@ helpers = this.merge(helpers, Handlebars.helpers); data = data || {};
             var name = this.$('.name').val(),
                 email = this.$('.email').val(),
                 password = this.$('.password').val(),
-                validationErrors = [];
+                validationErrors = [],
+                self = this;
 
             if (!validator.isLength(name, 1)) {
                 validationErrors.push("Please enter a name.");
@@ -50047,7 +49993,7 @@ helpers = this.merge(helpers, Handlebars.helpers); data = data || {};
                         window.location.href = msg.redirect;
                     },
                     error: function (xhr) {
-                        this.submitted = "no";
+                        self.submitted = "no";
                         Ghost.notifications.clearEverything();
                         Ghost.notifications.addItem({
                             type: 'error',
@@ -50268,7 +50214,7 @@ helpers = this.merge(helpers, Handlebars.helpers); data = data || {};
             // and then update the placeholder value.
             if (title) {
                 $.ajax({
-                    url: Ghost.paths.apiRoot + '/posts/getSlug/' + encodeURIComponent(title) + '/',
+                    url: Ghost.paths.apiRoot + '/posts/slug/' + encodeURIComponent(title) + '/',
                     success: function (result) {
                         $postSettingSlugEl.attr('placeholder', result);
                     }
@@ -50772,14 +50718,8 @@ helpers = this.merge(helpers, Handlebars.helpers); data = data || {};
                         } else {
                             data[key] = this.$('.js-upload-target').attr('src');
                         }
-
-                        self.model.save(data, {
-                            success: self.saveSuccess,
-                            error: self.saveError
-                        }).then(function () {
-                            self.saveSettings();
-                        });
-
+                        self.model.set(data);
+                        self.saveSettings();
                         return true;
                     },
                     buttonClass: "button-save right",
@@ -50850,12 +50790,8 @@ helpers = this.merge(helpers, Handlebars.helpers); data = data || {};
                     } else {
                         data[key] = this.$('.js-upload-target').attr('src');
                     }
-                    self.model.save(data, {
-                        success: self.saveSuccess,
-                        error: self.saveError
-                    }).then(function () {
-                        self.saveUser();
-                    });
+                    self.model.set(data);
+                    self.saveUser(data);
                     return true;
                 },
                 buttonClass: "button-save right",
