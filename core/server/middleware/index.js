@@ -39,7 +39,7 @@ function ghostLocals(req, res, next) {
     if (res.isAdmin) {
         res.locals.csrfToken = req.csrfToken();
         when.all([
-            api.users.read({id: req.session.user}),
+            api.users.read.call({user: req.session.user}, {id: req.session.user}),
             api.notifications.browse()
         ]).then(function (values) {
             var currentUser = values[0],
@@ -118,7 +118,7 @@ function activateTheme(activeTheme) {
     expressServer.set('theme view engine', hbs.express3(hbsOptions));
 
     // Update user error template
-    errors.updateActiveTheme(activeTheme, config().paths.availableThemes[activeTheme].hasOwnProperty('error'));
+    errors.updateActiveTheme(activeTheme);
 }
 
  // ### ManageAdminAndTheme Middleware
@@ -159,8 +159,9 @@ function manageAdminAndTheme(req, res, next) {
 // Redirect to signup if no users are currently created
 function redirectToSignup(req, res, next) {
     /*jslint unparam:true*/
-    api.users.browse().then(function (users) {
-        if (users.length === 0) {
+
+    api.users.doesUserExist().then(function (exists) {
+        if (!exists) {
             return res.redirect(config().paths.subdir + '/ghost/signup/');
         }
         next();
@@ -192,6 +193,41 @@ function checkSSL(req, res, next) {
         }
     }
     next();
+}
+
+// ### Robots Middleware
+// Handle requests to robots.txt and cache file
+function robots() {
+    var content, // file cache
+        filePath = path.join(config().paths.corePath, '/shared/robots.txt');
+
+    return function robots(req, res, next) {
+        if ('/robots.txt' === req.url) {
+            if (content) {
+                res.writeHead(200, content.headers);
+                res.end(content.body);
+            } else {
+                fs.readFile(filePath, function (err, buf) {
+                    if (err) {
+                        return next(err);
+                    }
+                    
+                    content = {
+                        headers: {
+                            'Content-Type': 'text/plain',
+                            'Content-Length': buf.length,
+                            'Cache-Control': 'public, max-age=' + ONE_YEAR_MS / 1000
+                        },
+                        body: buf
+                    };
+                    res.writeHead(200, content.headers);
+                    res.end(content.body);
+                });
+            }
+        } else {
+            next();
+        }
+    };
 }
 
 module.exports = function (server, dbHash) {
@@ -229,7 +265,6 @@ module.exports = function (server, dbHash) {
     // First determine whether we're serving admin or theme content
     expressServer.use(manageAdminAndTheme);
 
-
     // Admin only config
     expressServer.use(subdir + '/ghost', middleware.whenEnabled('admin', express['static'](path.join(corePath, '/client/assets'), {maxAge: ONE_YEAR_MS})));
 
@@ -241,6 +276,9 @@ module.exports = function (server, dbHash) {
 
     // Theme only config
     expressServer.use(subdir, middleware.whenEnabled(expressServer.get('activeTheme'), middleware.staticTheme()));
+
+    // Serve robots.txt if not found in theme
+    expressServer.use(robots());
 
     // Add in all trailing slashes
     expressServer.use(slashes(true, {headers: {'Cache-Control': 'public, max-age=' + ONE_YEAR_S}}));

@@ -5,13 +5,13 @@
 var path           = require('path'),
     when           = require('when'),
     semver         = require('semver'),
+    colors         = require('colors'),
     fs             = require('fs'),
     _              = require('lodash'),
     spawn          = require('child_process').spawn,
     buildDirectory = path.resolve(process.cwd(), '.build'),
     distDirectory  = path.resolve(process.cwd(), '.dist'),
     bootstrap      = require('./core/bootstrap'),
-
 
     // ## Build File Patterns
     // a list of files and paterns to process and exclude when running builds & releases
@@ -30,6 +30,9 @@ var path           = require('path'),
     // ## Grunt configuration
 
     configureGrunt = function (grunt) {
+
+        // This is not useful but required for jshint
+        colors.setTheme({silly: 'rainbow'});
 
         // load all grunt tasks
         require('matchdep').filterDev(['grunt-*', '!grunt-cli']).forEach(grunt.loadNpmTasks);
@@ -53,19 +56,19 @@ var path           = require('path'),
                     files: ['core/client/tpl/**/*.hbs'],
                     tasks: ['handlebars']
                 },
-                sass: {
-                    files: ['<%= paths.adminAssets %>/sass/**/*'],
-                    tasks: ['sass:admin']
-                },
                 concat: {
                     files: [
                         'core/client/*.js',
-                        'core/client/helpers/*.js',
-                        'core/client/models/*.js',
-                        'core/client/tpl/*.js',
-                        'core/client/views/*.js'
+                        'core/client/**/*.js'
                     ],
                     tasks: ['concat']
+                },
+                'ghost-ui': {
+                    files: [
+                        // Ghost UI CSS
+                        'bower_components/ghost-ui/dist/css/*.css'
+                    ],
+                    tasks: ['copy:dev']
                 },
                 livereload: {
                     files: [
@@ -73,8 +76,8 @@ var path           = require('path'),
                         'content/themes/casper/css/*.css',
                         // Theme JS
                         'content/themes/casper/js/*.js',
-                        // Admin CSS
-                        '<%= paths.adminAssets %>/css/*.css',
+                        // Client CSS
+                        'core/client/assets/css/*.css',
                         // Admin JS
                         'core/built/scripts/*.js'
                     ],
@@ -293,46 +296,17 @@ var path           = require('path'),
                     ]
                 },
 
-                api: {
-                    src: ['core/test/functional/api/*_test.js']
-                },
-
                 routes: {
-                    src: ['core/test/functional/routes/*_test.js']
+                    src: ['core/test/functional/routes/**/*_test.js']
                 }
             },
 
-            // ### Config for grunt-contrib-sass
-            // Compile all the SASS!
-            sass: {
-                admin: {
-                    files: {
-                        '<%= paths.adminAssets %>/css/screen.css': '<%= paths.adminAssets %>/sass/screen.scss'
-                    }
-                },
-                compress: {
-                    options: {
-                        style: 'compressed'
-                    },
-                    files: {
-                        '<%= paths.adminAssets %>/css/screen.css': '<%= paths.adminAssets %>/sass/screen.scss'
-                    }
-                }
-            },
 
             // ### config for grunt-shell
             // command line tools
             shell: {
-                // run bundle
-                bundle: {
-                    command: 'bundle install'
-                },
-                // install bourbon
-                bourbon: {
-                    command: 'bourbon install --path <%= paths.adminAssets %>/sass/modules/'
-                },
                 bower: {
-                    command: path.resolve(__dirname + '/node_modules/.bin/bower install'),
+                    command: path.resolve(__dirname.replace(' ', '\\ ') + '/node_modules/.bin/bower install'),
                     options: {
                         stdout: true
                     }
@@ -410,6 +384,11 @@ var path           = require('path'),
                         src: 'jquery.js',
                         dest: 'core/built/public/',
                         expand: true
+                    }, {
+                        cwd: 'bower_components/ghost-ui/dist/',
+                        src: ['**'],
+                        dest: 'core/client/assets/',
+                        expand: true
                     }]
                 },
                 prod: {
@@ -418,6 +397,11 @@ var path           = require('path'),
                         src: 'jquery.js',
                         dest: 'core/built/public/',
                         expand: true
+                    }, {
+                        cwd: 'bower_components/ghost-ui/dist/',
+                        src: ['**'],
+                        dest: 'core/client/assets/',
+                        expand: true
                     }]
                 },
                 release: {
@@ -425,6 +409,11 @@ var path           = require('path'),
                         cwd: 'bower_components/jquery/dist/',
                         src: 'jquery.js',
                         dest: 'core/built/public/',
+                        expand: true
+                    }, {
+                        cwd: 'bower_components/ghost-ui/dist/',
+                        src: ['**'],
+                        dest: 'core/client/assets/',
                         expand: true
                     }, {
                         expand: true,
@@ -460,7 +449,7 @@ var path           = require('path'),
 
                             'bower_components/lodash/dist/lodash.underscore.js',
                             'bower_components/backbone/backbone.js',
-                            'bower_components/handlebars.js/dist/handlebars.runtime.js',
+                            'bower_components/handlebars/handlebars.runtime.js',
                             'bower_components/moment/moment.js',
                             'bower_components/jquery-file-upload/js/jquery.fileupload.js',
                             'bower_components/codemirror/lib/codemirror.js',
@@ -470,9 +459,8 @@ var path           = require('path'),
                             'bower_components/showdown/src/showdown.js',
                             'bower_components/validator-js/validator.js',
 
-                            'core/client/assets/lib/showdown/extensions/ghostdown.js',
-                            'core/shared/lib/showdown/extensions/typography.js',
-                            'core/shared/lib/showdown/extensions/github.js',
+                            'core/shared/lib/showdown/extensions/ghostimagepreview.js',
+                            'core/shared/lib/showdown/extensions/ghostgfm.js',
 
                             // ToDo: Remove or replace
                             'core/client/assets/vendor/shortcuts.js',
@@ -489,7 +477,14 @@ var path           = require('path'),
                             'core/client/mobile-interactions.js',
                             'core/client/toggle.js',
                             'core/client/markdown-actions.js',
-                            'core/client/helpers/index.js'
+                            'core/client/helpers/index.js',
+                            'core/client/assets/lib/editor/index.js',
+                            'core/client/assets/lib/editor/markerManager.js',
+                            'core/client/assets/lib/editor/uploadManager.js',
+                            'core/client/assets/lib/editor/markdownEditor.js',
+                            'core/client/assets/lib/editor/htmlPreview.js',
+                            'core/client/assets/lib/editor/scrollHandler.js',
+                            'core/client/assets/lib/editor/mobileCodeMirror.js'
                         ],
 
                         'core/built/scripts/templates.js': [
@@ -516,7 +511,7 @@ var path           = require('path'),
 
                             'bower_components/lodash/dist/lodash.underscore.js',
                             'bower_components/backbone/backbone.js',
-                            'bower_components/handlebars.js/dist/handlebars.runtime.js',
+                            'bower_components/handlebars/handlebars.runtime.js',
                             'bower_components/moment/moment.js',
                             'bower_components/jquery-file-upload/js/jquery.fileupload.js',
                             'bower_components/codemirror/lib/codemirror.js',
@@ -526,9 +521,8 @@ var path           = require('path'),
                             'bower_components/showdown/src/showdown.js',
                             'bower_components/validator-js/validator.js',
 
-                            'core/client/assets/lib/showdown/extensions/ghostdown.js',
-                            'core/shared/lib/showdown/extensions/typography.js',
-                            'core/shared/lib/showdown/extensions/github.js',
+                            'core/shared/lib/showdown/extensions/ghostimagepreview.js',
+                            'core/shared/lib/showdown/extensions/ghostgfm.js',
 
                             // ToDo: Remove or replace
                             'core/client/assets/vendor/shortcuts.js',
@@ -544,6 +538,14 @@ var path           = require('path'),
                             'core/client/toggle.js',
                             'core/client/markdown-actions.js',
                             'core/client/helpers/index.js',
+
+                            'core/client/assets/lib/editor/index.js',
+                            'core/client/assets/lib/editor/markerManager.js',
+                            'core/client/assets/lib/editor/uploadManager.js',
+                            'core/client/assets/lib/editor/markdownEditor.js',
+                            'core/client/assets/lib/editor/htmlPreview.js',
+                            'core/client/assets/lib/editor/scrollHandler.js',
+                            'core/client/assets/lib/editor/mobileCodeMirror.js',
 
                             'core/client/tpl/hbs-tpl.js',
 
@@ -562,7 +564,8 @@ var path           = require('path'),
             uglify: {
                 prod: {
                     files: {
-                        'core/built/scripts/ghost.min.js': 'core/built/scripts/ghost.js'
+                        'core/built/scripts/ghost.min.js': 'core/built/scripts/ghost.js',
+                        'core/built/public/jquery.min.js': 'core/built/public/jquery.js'
                     }
                 }
             }
@@ -570,11 +573,10 @@ var path           = require('path'),
 
         grunt.initConfig(cfg);
 
-
         // ## Custom Tasks
 
         grunt.registerTask('setTestEnv', 'Use "testing" Ghost config; unless we are running on travis (then show queries for debugging)', function () {
-            process.env.NODE_ENV = process.env.TRAVIS ? 'travis-' + process.env.DB : 'testing';
+            process.env.NODE_ENV = process.env.TRAVIS ? process.env.NODE_ENV : 'testing';
             cfg.express.test.options.node_env = process.env.NODE_ENV;
         });
 
@@ -864,15 +866,13 @@ var path           = require('path'),
 
         grunt.registerTask('release',
             'Release task - creates a final built zip\n' +
-            ' - Do our standard build steps (sass, handlebars, etc)\n' +
+            ' - Do our standard build steps (handlebars, etc)\n' +
             ' - Generate changelog for the past 14 releases\n' +
             ' - Copy files to release-folder/#/#{version} directory\n' +
             ' - Clean out unnecessary files (travis, .git*, .af*, .groc*)\n' +
             ' - Zip files in release-folder to dist-folder/#{version} directory',
             [
-                'shell:bourbon',
                 'shell:bower',
-                'sass:compress',
                 'handlebars',
                 'concat',
                 'uglify',
@@ -884,13 +884,22 @@ var path           = require('path'),
         grunt.registerTask('dev',
             'Dev Mode; watch files and restart server on changes',
             [
-                'sass:admin',
                 'handlebars',
                 'concat',
                 'copy:dev',
                 'express:dev',
                 'watch'
             ]);
+
+        // ### Warn git users not ot use master in production
+
+        grunt.registerTask('master-warn',
+            'Outputs a warning to runners of grunt prod, that master shouldn\'t be used for live blogs',
+            function () {
+                console.log('>', 'Always two there are, no more, no less. A master and a'.red, 'stable'.red.bold + '.'.red);
+                console.log('Use the', 'stable'.bold, 'branch for live blogs.', 'Never'.bold, 'master!');
+            });
+
 
         // ### Find out more about grunt task usage
 
@@ -900,7 +909,6 @@ var path           = require('path'),
                 console.log('Type `grunt --help` to get the details of available grunt tasks, or alternatively visit https://github.com/TryGhost/Ghost/wiki/Grunt-Toolkit');
             });
 
-
         // ### Running the test suites
 
         grunt.registerTask('test-unit', 'Run unit tests (mocha)', ['clean:test', 'setTestEnv', 'loadConfig', 'mochacli:unit']);
@@ -909,11 +917,9 @@ var path           = require('path'),
 
         grunt.registerTask('test-functional', 'Run functional interface tests (CasperJS)', ['clean:test', 'setTestEnv', 'loadConfig', 'copy:dev', 'express:test', 'spawn-casperjs', 'express:test:stop']);
 
-        grunt.registerTask('test-api', 'Run functional api tests (mocha)', ['clean:test', 'setTestEnv', 'loadConfig', 'express:test', 'mochacli:api', 'express:test:stop']);
+        grunt.registerTask('test-routes', 'Run functional route tests (mocha)', ['clean:test', 'setTestEnv', 'loadConfig', 'mochacli:routes']);
 
-        grunt.registerTask('test-routes', 'Run functional route tests (mocha)', ['clean:test', 'setTestEnv', 'loadConfig', 'express:test', 'mochacli:routes', 'express:test:stop']);
-
-        grunt.registerTask('validate', 'Run tests and lint code', ['jshint', 'test-routes', 'test-unit', 'test-api', 'test-integration', 'test-functional']);
+        grunt.registerTask('validate', 'Run tests and lint code', ['shell:bower', 'concat:dev', 'jshint', 'test-routes', 'test-unit', 'test-integration', 'test-functional']);
 
 
         // ### Coverage report for Unit and Integration Tests
@@ -928,13 +934,13 @@ var path           = require('path'),
 
         // ### Tools for building assets
 
-        grunt.registerTask('init', 'Prepare the project for development', ['shell:bundle', 'shell:bourbon', 'shell:bower', 'default']);
+        grunt.registerTask('init', 'Prepare the project for development', ['shell:bower', 'default']);
 
         // Before running in production mode
-        grunt.registerTask('prod', 'Build CSS, JS & templates for production', ['sass:compress', 'handlebars', 'concat', 'uglify', 'copy:prod']);
+        grunt.registerTask('prod', 'Build JS & templates for production', ['handlebars', 'concat', 'uglify', 'copy:prod', 'master-warn']);
 
         // When you just say 'grunt'
-        grunt.registerTask('default', 'Build CSS, JS & templates for development', ['update_submodules', 'sass:compress', 'handlebars', 'concat', 'copy:dev']);
+        grunt.registerTask('default', 'Build JS & templates for development', ['update_submodules', 'handlebars', 'concat', 'copy:dev']);
     };
 
 module.exports = configureGrunt;

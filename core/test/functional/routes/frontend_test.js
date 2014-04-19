@@ -6,11 +6,13 @@
 // But then again testing real code, rather than mock code, might be more useful...
 
 var request    = require('supertest'),
+    express    = require('express'),
     should     = require('should'),
     moment     = require('moment'),
 
     testUtils  = require('../../utils'),
-    config     = require('../../../server/config'),
+    ghost      = require('../../../../core'),
+    httpServer,
 
     ONE_HOUR_S = 60 * 60,
     ONE_YEAR_S = 365 * 24 * ONE_HOUR_S,
@@ -38,15 +40,26 @@ describe('Frontend Routing', function () {
     }
 
     before(function (done) {
-        testUtils.clearData().then(function () {
-            // we initialise data, but not a user. No user should be required for navigating the frontend
-            return testUtils.initData();
-        }).then(function () {
-            done();
-        }, done);
+        var app = express();
 
-        // Setup the request object with the correct URL
-        request = request(config().url);
+        ghost({app: app}).then(function (_httpServer) {
+            // Setup the request object with the ghost express app
+            httpServer = _httpServer;
+            request = request(app);
+            testUtils.clearData().then(function () {
+                // we initialise data, but not a user. No user should be required for navigating the frontend
+                return testUtils.initData();
+            }).then(function () {
+                done();
+            }, done);
+        }).otherwise(function (e) {
+            console.log('Ghost Error: ', e);
+            console.log(e.stack);
+        });
+    });
+
+    after(function () {
+        httpServer.close();
     });
 
     describe('Home', function () {
@@ -129,6 +142,14 @@ describe('Frontend Routing', function () {
                 .expect(302)
                 .end(doEnd(done));
         });
+
+        it('should get redirected to /rss/ from /feed/', function (done) {
+            request.get('/feed/')
+                .expect('Location', '/rss/')
+                .expect('Cache-Control', cacheRules.year)
+                .expect(301)
+                .end(doEnd(done));
+        });
     });
 
     // ### The rest of the tests require more data
@@ -171,7 +192,7 @@ describe('Frontend Routing', function () {
                 .end(doEnd(done));
         });
 
-        it('should redirect to last page is page too high', function (done) {
+        it('should redirect to last page if page too high', function (done) {
             request.get('/page/4/')
                 .expect('Location', '/page/3/')
                 .expect('Cache-Control', cacheRules['public'])
@@ -179,7 +200,7 @@ describe('Frontend Routing', function () {
                 .end(doEnd(done));
         });
 
-        it('should redirect to first page is page too low', function (done) {
+        it('should redirect to first page if page too low', function (done) {
             request.get('/page/0/')
                 .expect('Location', '/')
                 .expect('Cache-Control', cacheRules['public'])
@@ -214,7 +235,7 @@ describe('Frontend Routing', function () {
                 .end(doEnd(done));
         });
 
-        it('should redirect to last page is page too high', function (done) {
+        it('should redirect to last page if page too high', function (done) {
             request.get('/rss/3/')
                 .expect('Location', '/rss/2/')
                 .expect('Cache-Control', cacheRules['public'])
@@ -222,9 +243,52 @@ describe('Frontend Routing', function () {
                 .end(doEnd(done));
         });
 
-        it('should redirect to first page is page too low', function (done) {
+        it('should redirect to first page if page too low', function (done) {
             request.get('/rss/0/')
                 .expect('Location', '/rss/')
+                .expect('Cache-Control', cacheRules['public'])
+                .expect(302)
+                .end(doEnd(done));
+        });
+    });
+
+    describe('Tag based RSS pages', function () {
+        it('should redirect without slash', function (done) {
+            request.get('/tag/getting-started/rss')
+                .expect('Location', '/tag/getting-started/rss/')
+                .expect('Cache-Control', cacheRules.year)
+                .expect(301)
+                .end(doEnd(done));
+        });
+
+        it('should respond with xml', function (done) {
+            request.get('/tag/getting-started/rss/')
+                .expect('Content-Type', /xml/)
+                .expect('Cache-Control', cacheRules['public'])
+                .expect(200)
+                .end(doEnd(done));
+        });
+
+        it('should redirect page 1', function (done) {
+            request.get('/tag/getting-started/rss/1/')
+                .expect('Location', '/tag/getting-started/rss/')
+                .expect('Cache-Control', cacheRules['public'])
+                // TODO: This should probably be a 301?
+                .expect(302)
+                .end(doEnd(done));
+        });
+
+        it('should redirect to last page if page too high', function (done) {
+            request.get('/tag/getting-started/rss/2/')
+                .expect('Location', '/tag/getting-started/rss/1/')
+                .expect('Cache-Control', cacheRules['public'])
+                .expect(302)
+                .end(doEnd(done));
+        });
+
+        it('should redirect to first page if page too low', function (done) {
+            request.get('/tag/getting-started/rss/0/')
+                .expect('Location', '/tag/getting-started/rss/')
                 .expect('Cache-Control', cacheRules['public'])
                 .expect(302)
                 .end(doEnd(done));
@@ -282,6 +346,13 @@ describe('Frontend Routing', function () {
                 .end(doEnd(done));
         });
 
+        it('should retrieve default robots.txt', function (done) {
+            request.get('/robots.txt')
+                .expect('Cache-Control', cacheRules.year)
+                .expect(200)
+                .end(doEnd(done));
+        })
+
         // at the moment there is no image fixture to test
         // it('should retrieve image assets', function (done) {
         // request.get('/content/images/some.jpg')
@@ -335,7 +406,7 @@ describe('Frontend Routing', function () {
                 .end(doEnd(done));
         });
 
-        it('should redirect to last page is page too high', function (done) {
+        it('should redirect to last page if page too high', function (done) {
             request.get('/tag/injection/page/4/')
                 .expect('Location', '/tag/injection/page/2/')
                 .expect('Cache-Control', cacheRules['public'])
@@ -343,7 +414,7 @@ describe('Frontend Routing', function () {
                 .end(doEnd(done));
         });
 
-        it('should redirect to first page is page too low', function (done) {
+        it('should redirect to first page if page too low', function (done) {
             request.get('/tag/injection/page/0/')
                 .expect('Location', '/tag/injection/')
                 .expect('Cache-Control', cacheRules['public'])

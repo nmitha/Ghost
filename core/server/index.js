@@ -4,7 +4,6 @@ var crypto      = require('crypto'),
     hbs         = require('express-hbs'),
     fs          = require('fs'),
     uuid        = require('node-uuid'),
-    path        = require('path'),
     Polyglot    = require('node-polyglot'),
     semver      = require('semver'),
     _           = require('lodash'),
@@ -22,8 +21,8 @@ var crypto      = require('crypto'),
     routes      = require('./routes'),
     packageInfo = require('../../package.json'),
 
-
 // Variables
+    httpServer,
     dbHash;
 
 // If we're in development mode, require "when/console/monitor"
@@ -61,7 +60,7 @@ function initDbHashAndFirstRun() {
 
         if (dbHash === null) {
             var initHash = uuid.v4();
-            return when(api.settings.edit('dbHash', initHash)).then(function (settings) {
+            return when(api.settings.edit.call({user: 1}, 'dbHash', initHash)).then(function (settings) {
                 dbHash = settings.dbHash;
                 return dbHash;
             }).then(doFirstRun);
@@ -107,21 +106,87 @@ function builtFilesExist() {
     return when.all(deferreds);
 }
 
+function ghostStartMessages() {
+    // Tell users if their node version is not supported, and exit
+    if (!semver.satisfies(process.versions.node, packageInfo.engines.node)) {
+        console.log(
+            "\nERROR: Unsupported version of Node".red,
+            "\nGhost needs Node version".red,
+            packageInfo.engines.node.yellow,
+            "you are using version".red,
+            process.versions.node.yellow,
+            "\nPlease go to http://nodejs.org to get a supported version".green
+        );
+
+        process.exit(0);
+    }
+
+    // Startup & Shutdown messages
+    if (process.env.NODE_ENV === 'production') {
+        console.log(
+            "Ghost is running...".green,
+            "\nYour blog is now available on",
+            config().url,
+            "\nCtrl+C to shut down".grey
+        );
+
+        // ensure that Ghost exits correctly on Ctrl+C
+        process.on('SIGINT', function () {
+            console.log(
+                "\nGhost has shut down".red,
+                "\nYour blog is now offline"
+            );
+            process.exit(0);
+        });
+    } else {
+        console.log(
+            ("Ghost is running in " + process.env.NODE_ENV + "...").green,
+            "\nListening on",
+                config.getSocket() || config().server.host + ':' + config().server.port,
+            "\nUrl configured as:",
+            config().url,
+            "\nCtrl+C to shut down".grey
+        );
+        // ensure that Ghost exits correctly on Ctrl+C
+        process.on('SIGINT', function () {
+            console.log(
+                "\nGhost has shutdown".red,
+                "\nGhost was running for",
+                Math.round(process.uptime()),
+                "seconds"
+            );
+            process.exit(0);
+        });
+    }
+}
+
+// ## Initializes the ghost application.
 // Sets up the express server instance.
 // Instantiates the ghost singleton, helpers, routes, middleware, and apps.
 // Finally it starts the http server.
-function setup(server) {
-
+function init(server) {
     // create a hash for cache busting assets
     var assetHash = (crypto.createHash('md5').update(packageInfo.version + Date.now()).digest('hex')).substring(0, 10);
+
+    // If no express instance is passed in
+    // then create our own
+    if (!server) {
+        server = express();
+    }
 
     // Set up Polygot instance on the require module
     Polyglot.instance = new Polyglot();
 
     // ### Initialisation
+    // The server and its dependencies require a populated config
+    // It returns a promise that is resolved when the application
+    // has finished starting up.
 
-    // Initialise the models
-    models.init().then(function () {
+    // Make sure javascript files have been built via grunt concat
+    return builtFilesExist().then(function () {
+        // Initialise the models
+        return models.init();
+    }).then(function () {
         // Populate any missing default settings
         return models.Settings.populateDefaults();
     }).then(function () {
@@ -136,19 +201,17 @@ function setup(server) {
             // Check for or initialise a dbHash.
             initDbHashAndFirstRun(),
             // Initialize the permissions actions and objects
-            permissions.init()
+            permissions.init(),
+            // Initialize mail
+            mailer.init(),
+            // Initialize apps
+            apps.init()
         );
     }).then(function () {
-        // Make sure javascript files have been built via grunt concat
-        return builtFilesExist();
-    }).then(function () {
-        // Initialize mail
-        return mailer.init();
-    }).then(function () {
-        var adminHbs = hbs.create();
+        var adminHbs = hbs.create(),
+            deferred = when.defer();
 
         // ##Configuration
-        server.set('version hash', assetHash);
 
         // return the correct mime type for woff filess
         express['static'].mime.define({'application/font-woff': ['woff']});
@@ -177,111 +240,41 @@ function setup(server) {
         // Set up Frontend routes
         routes.frontend(server);
 
-        // Are we using sockets? Custom socket or the default?
-        function getSocket() {
-            if (config().server.hasOwnProperty('socket')) {
-                return _.isString(config().server.socket) ? config().server.socket : path.join(config.path().contentPath, process.env.NODE_ENV + '.socket');
-            }
-            return false;
-        }
-
-        function startGhost() {
-            // Tell users if their node version is not supported, and exit
-            if (!semver.satisfies(process.versions.node, packageInfo.engines.node)) {
-                console.log(
-                    "\nERROR: Unsupported version of Node".red,
-                    "\nGhost needs Node version".red,
-                    packageInfo.engines.node.yellow,
-                    "you are using version".red,
-                    process.versions.node.yellow,
-                    "\nPlease go to http://nodejs.org to get a supported version".green
-                );
-
-                process.exit(0);
-            }
-
-            // Startup & Shutdown messages
-            if (process.env.NODE_ENV === 'production') {
-                console.log(
-                    "Ghost is running...".green,
-                    "\nYour blog is now available on",
-                    config().url,
-                    "\nCtrl+C to shut down".grey
-                );
-
-                // ensure that Ghost exits correctly on Ctrl+C
-                process.on('SIGINT', function () {
-                    console.log(
-                        "\nGhost has shut down".red,
-                        "\nYour blog is now offline"
-                    );
-                    process.exit(0);
-                });
-            } else {
-                console.log(
-                    ("Ghost is running in " + process.env.NODE_ENV + "...").green,
-                    "\nListening on",
-                    getSocket() || config().server.host + ':' + config().server.port,
-                    "\nUrl configured as:",
-                    config().url,
-                    "\nCtrl+C to shut down".grey
-                );
-                // ensure that Ghost exits correctly on Ctrl+C
-                process.on('SIGINT', function () {
-                    console.log(
-                        "\nGhost has shutdown".red,
-                        "\nGhost was running for",
-                        Math.round(process.uptime()),
-                        "seconds"
-                    );
-                    process.exit(0);
-                });
-            }
-
-        }
-
-        // Initialize apps then start the server
-        apps.init().then(function () {
-
-            // ## Start Ghost App
-            if (getSocket()) {
-                // Make sure the socket is gone before trying to create another
-                fs.unlink(getSocket(), function (err) {
-                    /*jshint unused:false*/
-                    server.listen(
-                        getSocket(),
-                        startGhost
-                    );
-                    fs.chmod(getSocket(), '0660');
-                });
-
-            } else {
-                server.listen(
-                    config().server.port,
-                    config().server.host,
-                    startGhost
-                );
-            }
-            _.each(config().paths.availableThemes._messages.errors, function (error) {
-                errors.logError(error.message, error.context);
-            });
-            _.each(config().paths.availableThemes._messages.warns, function (warn) {
-                errors.logWarn(warn.message, warn.context);
-            });
+        // Log all theme errors and warnings
+        _.each(config().paths.availableThemes._messages.errors, function (error) {
+            errors.logError(error.message, error.context, error.help);
         });
-    }, function (err) {
-        errors.logErrorAndExit(err, err.context, err.help);
+
+        _.each(config().paths.availableThemes._messages.warns, function (warn) {
+            errors.logWarn(warn.message, warn.context, warn.help);
+        });
+
+        // ## Start Ghost App
+        if (config.getSocket()) {
+            // Make sure the socket is gone before trying to create another
+            fs.unlink(config.getSocket(), function (err) {
+                /*jshint unused:false*/
+                httpServer = server.listen(
+                    config.getSocket()
+                );
+                fs.chmod(config.getSocket(), '0660');
+            });
+
+        } else {
+            httpServer = server.listen(
+                config().server.port,
+                config().server.host
+            );
+        }
+
+        httpServer.on('listening', function () {
+            ghostStartMessages();
+            deferred.resolve(httpServer);
+        });
+
+
+        return deferred.promise;
     });
-}
-
-// Initializes the ghost application.
-function init(app) {
-    if (!app) {
-        app = express();
-    }
-
-    // The server and its dependencies require a populated config
-    setup(app);
 }
 
 module.exports = init;

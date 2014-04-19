@@ -154,6 +154,89 @@ CasperTest.begin('Ensure general blog description field length validation', 3, f
     }, 2000);
 });
 
+CasperTest.begin('Ensure image upload modals display correctly', 6, function suite(test) {
+    casper.thenOpen(url + "ghost/settings/general/", function testTitleAndUrl() {
+        test.assertTitle("Ghost Admin", "Ghost admin has no title");
+        test.assertUrlMatch(/ghost\/settings\/general\/$/, "Ghost doesn't require login this time");
+    });
+
+    function assertImageUploaderModalThenClose() {
+        test.assertExists('.js-drop-zone.image-uploader', 'Image drop zone modal renders correctly');
+        this.click('#modal-container .js-button-accept');
+        casper.waitForSelector('.notification-success', function onSuccess() {
+            test.assert(true, 'Got success notification');
+        }, function onTimeout() {
+            test.fail('No success notification');
+        }, 1000);
+    };
+
+    // Test Blog Logo Upload Button
+    casper.waitForSelector('#general', function then() {
+        this.click('#general .js-modal-logo');
+    });
+
+    casper.waitForSelector('#modal-container .modal-content', assertImageUploaderModalThenClose,
+        function onTimeout() {
+            test.fail('No upload logo modal container appeared');
+        }, 1000);
+
+    // Test Blog Cover Upload Button
+    casper.then(function() {
+        this.click('#general .js-modal-cover');
+    });
+
+    casper.waitForSelector('#modal-container .modal-content', assertImageUploaderModalThenClose,
+        function onTimeout() {
+            test.fail('No upload cover modal container appeared');
+        }, 1000);
+});
+
+CasperTest.begin("User settings screen validates email", 6, function suite(test) {
+    var email, brokenEmail;
+
+    casper.thenOpen(url + "ghost/settings/user/", function testTitleAndUrl() {
+        test.assertTitle("Ghost Admin", "Ghost admin has no title");
+        test.assertUrlMatch(/ghost\/settings\/user\/$/, "Ghost doesn't require login this time");
+    });
+
+    casper.then(function setEmailToInvalid() {
+        email = casper.getElementInfo('#user-email').attributes.value;
+        brokenEmail = email.replace('.', '-');
+
+        casper.fillSelectors('.user-profile', {
+            '#user-email': brokenEmail
+        }, false);
+    });
+
+    casper.thenClick('#user .button-save');
+
+    casper.waitForResource('/users/');
+
+    casper.waitForSelector('.notification-error', function onSuccess() {
+        test.assert(true, 'Got error notification');
+        test.assertSelectorDoesntHaveText('.notification-error', '[object Object]');
+    }, function onTimeout() {
+        test.assert(false, 'No error notification :(');
+    });
+
+    casper.then(function resetEmailToValid() {
+        casper.fillSelectors('.user-profile', {
+            '#user-email': email
+        }, false);
+    });
+
+    casper.thenClick('#user .button-save');
+
+    casper.waitForResource(/users/);
+
+    casper.waitForSelector('.notification-success', function onSuccess() {
+        test.assert(true, 'Got success notification');
+        test.assertSelectorDoesntHaveText('.notification-success', '[object Object]');
+    }, function onTimeout() {
+        test.assert(false, 'No success notification :(');
+    });
+});
+
 CasperTest.begin('Ensure postsPerPage number field form validation', 3, function suite(test) {
     casper.thenOpen(url + "ghost/settings/general/", function testTitleAndUrl() {
         test.assertTitle("Ghost Admin", "Ghost admin has no title");
@@ -215,52 +298,6 @@ CasperTest.begin('Ensure postsPerPage min of 0', 3, function suite(test) {
     }, function onTimeout() {
         test.fail('postsPerPage min error did not appear');
     }, 2000);
-});
-
-CasperTest.begin("User settings screen validates email", 6, function suite(test) {
-    var email, brokenEmail;
-
-    casper.thenOpen(url + "ghost/settings/user/", function testTitleAndUrl() {
-        test.assertTitle("Ghost Admin", "Ghost admin has no title");
-        test.assertUrlMatch(/ghost\/settings\/user\/$/, "Ghost doesn't require login this time");
-    });
-
-    casper.then(function setEmailToInvalid() {
-        email = casper.getElementInfo('#user-email').attributes.value;
-        brokenEmail = email.replace('.', '-');
-
-        casper.fillSelectors('.user-profile', {
-            '#user-email': brokenEmail
-        }, false);
-    });
-
-    casper.thenClick('#user .button-save');
-
-    casper.waitForResource('/users/');
-
-    casper.waitForSelector('.notification-error', function onSuccess() {
-        test.assert(true, 'Got error notification');
-        test.assertSelectorDoesntHaveText('.notification-error', '[object Object]');
-    }, function onTimeout() {
-        test.assert(false, 'No error notification :(');
-    });
-
-    casper.then(function resetEmailToValid() {
-        casper.fillSelectors('.user-profile', {
-            '#user-email': email
-        }, false);
-    });
-
-    casper.thenClick('#user .button-save');
-
-    casper.waitForResource(/users/);
-
-    casper.waitForSelector('.notification-success', function onSuccess() {
-        test.assert(true, 'Got success notification');
-        test.assertSelectorDoesntHaveText('.notification-success', '[object Object]');
-    }, function onTimeout() {
-        test.assert(false, 'No success notification :(');
-    });
 });
 
 CasperTest.begin("User settings screen shows remaining characters for Bio properly", 4, function suite(test) {
@@ -350,4 +387,59 @@ CasperTest.begin('Ensure user location field length validation', 3, function sui
     }, function onTimeout() {
         test.fail('Location field length error did not appear');
     }, 2000);
+});
+
+CasperTest.begin('Admin navigation bar is correct', 28, function suite(test) {
+    casper.thenOpen(url + 'ghost/settings/', function testTitleAndUrl() {
+        test.assertTitle('Ghost Admin', 'Ghost admin has no title');
+        test.assertUrlMatch(/ghost\/settings\/general\/$/, "Ghost doesn't require login this time");
+    });
+
+    casper.then(function testNavItems() {
+        test.assertExists('a.ghost-logo', 'Ghost logo home page link exists');
+        test.assertEquals(this.getElementAttribute('a.ghost-logo', 'href'), '/', 'Ghost logo href is correct');
+
+        test.assertExists('#main-menu li.content a', 'Content nav item exists');
+        test.assertSelectorHasText('#main-menu li.content a', 'Content', 'Content nav item has correct text');
+        test.assertEquals(this.getElementAttribute('#main-menu li.content a', 'href'), '/ghost/', 'Content href is correct');
+         test.assertEval(function testContentIsNotActive() {
+            return !document.querySelector('#main-menu li.content').classList.contains('active');
+        }, 'Content nav item is not marked active');
+
+        test.assertExists('#main-menu li.editor a', 'Editor nav item exists');
+        test.assertSelectorHasText('#main-menu li.editor a', 'New Post', 'Editor nav item has correct text');
+        test.assertEquals(this.getElementAttribute('#main-menu li.editor a', 'href'), '/ghost/editor/', 'Editor href is correct');
+        test.assertEval(function testEditorIsNotActive() {
+            return !document.querySelector('#main-menu li.editor').classList.contains('active');
+        }, 'Editor nav item is not marked active');
+
+        test.assertExists('#main-menu li.settings a', 'Settings nav item exists');
+        test.assertSelectorHasText('#main-menu li.settings a', 'Settings', 'Settings nav item has correct text');
+        test.assertEquals(this.getElementAttribute('#main-menu li.settings a', 'href'), '/ghost/settings/', 'Settings href is correct');
+        test.assertEval(function testSettingsIsActive() {
+            return document.querySelector('#main-menu li.settings').classList.contains('active');
+        }, 'Settings nav item is marked active');
+    });
+
+    casper.then(function testUserMenuNotVisible() {
+        test.assertExists('#usermenu', 'User menu nav item exists');
+        test.assertNotVisible('#usermenu ul.overlay', 'User menu should not be visible');
+    });
+
+    casper.thenClick('#usermenu a');
+    casper.waitForSelector('#usermenu ul.overlay', function then() {
+        test.assertVisible('#usermenu ul.overlay', 'User menu should be visible');
+
+        test.assertExists('#usermenu li.usermenu-profile a', 'Profile menu item exists');
+        test.assertSelectorHasText('#usermenu li.usermenu-profile a', 'Your Profile', 'Profile menu item has correct text');
+        test.assertEquals(this.getElementAttribute('#usermenu li.usermenu-profile a', 'href'), '/ghost/settings/user/', 'Profile href is correct');
+
+        test.assertExists('#usermenu li.usermenu-help a', 'Help menu item exists');
+        test.assertSelectorHasText('#usermenu li.usermenu-help a', 'Help / Support', 'Help menu item has correct text');
+        test.assertEquals(this.getElementAttribute('#usermenu li.usermenu-help a', 'href'), 'http://ghost.org/forum/', 'Help href is correct');
+
+        test.assertExists('#usermenu li.usermenu-signout a', 'Sign Out menu item exists');
+        test.assertSelectorHasText('#usermenu li.usermenu-signout a', 'Sign Out', 'Sign Out menu item has correct text');
+        test.assertEquals(this.getElementAttribute('#usermenu li.usermenu-signout a', 'href'), '/ghost/signout/', 'Sign Out href is correct');
+    });
 });

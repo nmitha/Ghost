@@ -47,20 +47,16 @@ ghostBookshelf.Model = ghostBookshelf.Model.extend({
         validation.validateSchema(this.tableName, this.toJSON());
     },
 
-    creating: function () {
+    creating: function (newObj, attr, options) {
         if (!this.get('created_by')) {
-            this.set('created_by', 1);
+            this.set('created_by', options.user);
         }
     },
 
-    saving: function () {
-         // Remove any properties which don't belong on the model
+    saving: function (newObj, attr, options) {
+        // Remove any properties which don't belong on the model
         this.attributes = this.pick(this.permittedAttributes());
-
-        // sessions do not have 'updated_by' column
-        if (this.tableName !== 'sessions') {
-            this.set('updated_by', 1);
-        }
+        this.set('updated_by', options.user);
     },
 
     // Base prototype properties will go here
@@ -149,7 +145,9 @@ ghostBookshelf.Model = ghostBookshelf.Model.extend({
     edit: function (editedObj, options) {
         options = options || {};
         return this.forge({id: editedObj.id}).fetch(options).then(function (foundObj) {
-            return foundObj.save(editedObj, options);
+            if (foundObj) {
+                return foundObj.save(editedObj, options);
+            }
         });
     },
 
@@ -199,36 +197,39 @@ ghostBookshelf.Model = ghostBookshelf.Model.extend({
     generateSlug: function (Model, base, readOptions) {
         var slug,
             slugTryCount = 1,
+            baseName = Model.prototype.tableName.replace(/s$/, ''),
             // Look for a post with a matching slug, append an incrementing number if so
-            checkIfSlugExists = function (slugToFind) {
-                var args = {slug: slugToFind};
-                //status is needed for posts
-                if (readOptions && readOptions.status) {
-                    args.status = readOptions.status;
+            checkIfSlugExists;
+
+        checkIfSlugExists = function (slugToFind) {
+            var args = {slug: slugToFind};
+            //status is needed for posts
+            if (readOptions && readOptions.status) {
+                args.status = readOptions.status;
+            }
+            return Model.findOne(args, readOptions).then(function (found) {
+                var trimSpace;
+
+                if (!found) {
+                    return when.resolve(slugToFind);
                 }
-                return Model.findOne(args, readOptions).then(function (found) {
-                    var trimSpace;
 
-                    if (!found) {
-                        return when.resolve(slugToFind);
-                    }
+                slugTryCount += 1;
 
-                    slugTryCount += 1;
+                // If this is the first time through, add the hyphen
+                if (slugTryCount === 2) {
+                    slugToFind += '-';
+                } else {
+                    // Otherwise, trim the number off the end
+                    trimSpace = -(String(slugTryCount - 1).length);
+                    slugToFind = slugToFind.slice(0, trimSpace);
+                }
 
-                    // If this is the first time through, add the hyphen
-                    if (slugTryCount === 2) {
-                        slugToFind += '-';
-                    } else {
-                        // Otherwise, trim the number off the end
-                        trimSpace = -(String(slugTryCount - 1).length);
-                        slugToFind = slugToFind.slice(0, trimSpace);
-                    }
+                slugToFind += slugTryCount;
 
-                    slugToFind += slugTryCount;
-
-                    return checkIfSlugExists(slugToFind);
-                });
-            };
+                return checkIfSlugExists(slugToFind);
+            });
+        };
 
         slug = base.trim();
 
@@ -248,12 +249,12 @@ ghostBookshelf.Model = ghostBookshelf.Model.extend({
         slug = slug.charAt(slug.length - 1) === '-' ? slug.substr(0, slug.length - 1) : slug;
 
         // Check the filtered slug doesn't match any of the reserved keywords
-        slug = /^(ghost|ghost\-admin|admin|wp\-admin|wp\-login|dashboard|logout|login|signin|signup|signout|register|archive|archives|category|categories|tag|tags|page|pages|post|posts|user|users|rss)$/g
-            .test(slug) ? slug + '-post' : slug;
+        slug = /^(ghost|ghost\-admin|admin|wp\-admin|wp\-login|dashboard|logout|login|signin|signup|signout|register|archive|archives|category|categories|tag|tags|page|pages|post|posts|user|users|rss|feed)$/g
+            .test(slug) ? slug + '-' + baseName : slug;
 
         //if slug is empty after trimming use "post"
         if (!slug) {
-            slug = 'post';
+            slug = baseName;
         }
         // Test for duplicate slugs.
         return checkIfSlugExists(slug);

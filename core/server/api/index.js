@@ -26,11 +26,11 @@ function cacheInvalidationHeader(req, result) {
 
     if (method === 'POST' || method === 'PUT' || method === 'DELETE') {
         if (endpoint === 'settings' || endpoint === 'users' || endpoint === 'db') {
-            cacheInvalidate = "/*";
+            cacheInvalidate = '/*';
         } else if (endpoint === 'posts') {
-            cacheInvalidate = "/, /page/*, /rss/, /rss/*";
-            if (id && jsonResult.slug) {
-                return config.urlForPost(settings, jsonResult).then(function (postUrl) {
+            cacheInvalidate = '/, /page/*, /rss/, /rss/*, /tag/*';
+            if (id && jsonResult.posts[0].slug) {
+                return config.urlForPost(settings, jsonResult.posts[0]).then(function (postUrl) {
                     return cacheInvalidate + ', ' + postUrl;
                 });
             }
@@ -47,17 +47,17 @@ requestHandler = function (apiMethod) {
     return function (req, res) {
         var options = _.extend(req.body, req.files, req.query, req.params),
             apiContext = {
-                user: req.session && req.session.user
+                user: (req.session && req.session.user) ? req.session.user : null
             };
 
         return apiMethod.call(apiContext, options).then(function (result) {
-            res.json(result || {});
             return cacheInvalidationHeader(req, result).then(function (header) {
                 if (header) {
                     res.set({
                         "X-Cache-Invalidate": header
                     });
                 }
+                res.json(result || {});
             });
         }, function (error) {
             var errorCode = error.code || 500,

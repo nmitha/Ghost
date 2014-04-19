@@ -38,7 +38,9 @@ User = ghostBookshelf.Model.extend({
 
     tableName: 'users',
 
-    saving: function () {
+    saving: function (newPage, attr, options) {
+          /*jshint unused:false*/
+
         var self = this;
         // disabling sanitization until we can implement a better version
         // this.set('name', this.sanitize('name'));
@@ -49,14 +51,14 @@ User = ghostBookshelf.Model.extend({
 
         ghostBookshelf.Model.prototype.saving.apply(this, arguments);
 
-        if (!this.get('slug')) {
+        if (this.hasChanged('slug') || !this.get('slug')) {
             // Generating a slug requires a db call to look for conflicting slugs
-            return ghostBookshelf.Model.generateSlug(User, this.get('name'))
+            return ghostBookshelf.Model.generateSlug(User, this.get('slug') || this.get('name'),
+                {transacting: options.transacting})
                 .then(function (slug) {
                     self.set({slug: slug});
                 });
         }
-
     },
 
     posts: function () {
@@ -79,7 +81,7 @@ User = ghostBookshelf.Model.extend({
      *
      * Hashes the password provided before saving to the database.
      */
-    add: function (_user) {
+    add: function (_user, options) {
 
         var self = this,
             // Clone the _user so we don't expose the hashed password unnecessarily
@@ -106,7 +108,7 @@ User = ghostBookshelf.Model.extend({
             return self.gravatarLookup(userData);
         }).then(function (userData) {
             // Save the user with the hashed password
-            return ghostBookshelf.Model.add.call(self, userData);
+            return ghostBookshelf.Model.add.call(self, userData, options);
         }).then(function (addedUser) {
             // Assign the userData to our created user so we can pass it back
             userData = addedUser;
@@ -136,6 +138,26 @@ User = ghostBookshelf.Model.extend({
         //     }, errors.logAndThrowError);
         // }, errors.logAndThrowError);
 
+    },
+
+    permissable: function (userModelOrId, context) {
+        var self = this,
+            userId = context.user,
+            userModel = userModelOrId;
+
+        // If we passed in an id instead of a model, get the model
+        // then check the permissions
+        if (_.isNumber(userModelOrId) || _.isString(userModelOrId)) {
+            return this.read({id: userModelOrId, status: 'all'}).then(function (foundUserModel) {
+                return self.permissable(foundUserModel, context);
+            }, errors.logAndThrowError);
+        }
+
+        // If this is the same user that requests the operation allow it.
+        if (userModel && userId === userModel.get('id')) {
+            return when.resolve();
+        }
+        return when.reject();
     },
 
     setWarning: function (user) {
@@ -175,7 +197,7 @@ User = ghostBookshelf.Model.extend({
                         });
                     }
 
-                    return when(user.set('status', 'active').save()).then(function (user) {
+                    return when(user.set({status : 'active', last_login : new Date()}).save()).then(function (user) {
                         return user;
                     });
                 }, errors.logAndThrowError);
@@ -330,35 +352,6 @@ User = ghostBookshelf.Model.extend({
 
             return foundUser;
         });
-    },
-
-    effectivePermissions: function (id) {
-        return this.read({id: id}, { withRelated: ['permissions', 'roles.permissions'] })
-            .then(function (foundUser) {
-                var seenPerms = {},
-                    rolePerms = _.map(foundUser.related('roles').models, function (role) {
-                        return role.related('permissions').models;
-                    }),
-                    allPerms = [];
-
-                rolePerms.push(foundUser.related('permissions').models);
-
-                _.each(rolePerms, function (rolePermGroup) {
-                    _.each(rolePermGroup, function (perm) {
-                        var key = perm.get('action_type') + '-' + perm.get('object_type') + '-' + perm.get('object_id');
-
-                        // Only add perms once
-                        if (seenPerms[key]) {
-                            return;
-                        }
-
-                        allPerms.push(perm);
-                        seenPerms[key] = true;
-                    });
-                });
-
-                return when.resolve(allPerms);
-            }, errors.logAndThrowError);
     },
 
     gravatarLookup: function (userData) {
