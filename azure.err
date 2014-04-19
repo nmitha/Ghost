@@ -1,13 +1,13 @@
-Sat Mar 08 2014 23:20:05 GMT-0500 (EST):
-<Error 3c 21 44 4f 43 54 59 50 45 20 48 54 4d 4c 20 50 55 42 4c 49 43 20 22 2d 2f 2f 57 33 43 2f 2f 44 54 44 20 48 54 4d 4c 20 34 2e 30 31 2f 2f 45 4e 22 22 68 ...>
-Error
-    at Function.ServiceClient._normalizeError (/usr/local/lib/node_modules/azure-cli/node_modules/azure/node_modules/azure-common/lib/services/serviceclient.js:785:23)
-    at ScmService.ServiceClient._processResponse (/usr/local/lib/node_modules/azure-cli/node_modules/azure/node_modules/azure-common/lib/services/serviceclient.js:450:41)
-    at processResponseCallback (/usr/local/lib/node_modules/azure-cli/node_modules/azure/node_modules/azure-common/lib/services/serviceclient.js:213:35)
-    at IncomingMessage.<anonymous> (/usr/local/lib/node_modules/azure-cli/node_modules/azure/node_modules/azure-common/lib/services/serviceclient.js:242:17)
-    at IncomingMessage.EventEmitter.emit (events.js:117:20)
-    at _stream_readable.js:920:16
-    at process._tickCallback (node.js:415:13)
-    at doLogStream (/usr/local/lib/node_modules/azure-cli/lib/commands/site.log._js:235:11)
-    at __2 (/usr/local/lib/node_modules/azure-cli/lib/commands/site.log._js:95:18)
-
+Sat Apr 19 2014 02:03:21 GMT-0400 (EDT):
+[Error: Invalid subscription "default directory"]
+Error: Invalid subscription "default directory"
+    at AzureCli.<anonymous> (/usr/local/lib/node_modules/azure-cli/lib/commands/account._js:72:15)
+    at AzureCli.<anonymous> (/usr/local/lib/node_modules/azure-cli/lib/cli.js:196:12)
+    at AzureCli.<anonymous> (/usr/local/lib/node_modules/azure-cli/node_modules/commander/lib/commander.js:235:8)
+    at AzureCli.EventEmitter.emit (events.js:98:17)
+    at AzureCli.Command.parseArgs (/usr/local/lib/node_modules/azure-cli/node_modules/commander/lib/commander.js:405:12)
+    at AzureCli.Command.parse (/usr/local/lib/node_modules/azure-cli/node_modules/commander/lib/commander.js:351:15)
+    at AzureCli.<anonymous> (/usr/local/lib/node_modules/azure-cli/lib/cli.js:521:38)
+    at AzureCli.EventEmitter.emit (events.js:95:17)
+    at AzureCli.Command.parseArgs (/usr/local/lib/node_modules/azure-cli/node_modules/commander/lib/commander.js:407:12)
+    at AzureCli.Command.parse (/usr/local/lib/node_modules/azure-cli/node_modules/commander/lib/commander.js:351:15)
